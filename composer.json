@@ -8,9 +8,7 @@
         "stripe/stripe-php": "^15.0"
     },
     "autoload": {
-        "psr-4": {
-            "STRBooking\\": "includes/"
-        }
+        "classmap": ["includes/"]
     },
     "config": {
         "optimize-autoloader": true,

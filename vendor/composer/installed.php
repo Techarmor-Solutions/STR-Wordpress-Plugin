@@ -1,0 +1,41 @@
+<?php return array(
+    'root' => array(
+        'name' => 'str-direct-booking/plugin',
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => '931986fd3e540f20c8abd9396c6ecec02f8750e9',
+        'type' => 'wordpress-plugin',
+        'install_path' => __DIR__ . '/../../',
+        'aliases' => array(),
+        'dev' => false,
+    ),
+    'versions' => array(
+        'kigkonsult/icalcreator' => array(
+            'pretty_version' => 'v2.41.92',
+            'version' => '2.41.92.0',
+            'reference' => 'a4d35d7a58c08b816dc8a7778db19f461c1429bd',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../kigkonsult/icalcreator',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'str-direct-booking/plugin' => array(
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => '931986fd3e540f20c8abd9396c6ecec02f8750e9',
+            'type' => 'wordpress-plugin',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'stripe/stripe-php' => array(
+            'pretty_version' => 'v15.10.0',
+            'version' => '15.10.0.0',
+            'reference' => '3df1a19a33477af9ead8984dbd84e8f637c36199',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../stripe/stripe-php',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+    ),
+);

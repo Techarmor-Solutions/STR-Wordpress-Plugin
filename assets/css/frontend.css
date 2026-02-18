@@ -56,15 +56,15 @@
 	margin-bottom: 16px;
 }
 
-.str-field label {
+.str-booking-widget .str-field label {
 	font-size: 14px;
 	font-weight: 600;
 	color: #374151;
 }
 
-.str-field input,
-.str-field select,
-.str-field textarea {
+.str-booking-widget .str-field input,
+.str-booking-widget .str-field select,
+.str-booking-widget .str-field textarea {
 	padding: 10px 12px;
 	border: 1.5px solid #d1d5db;
 	border-radius: 6px;
@@ -76,15 +76,15 @@
 	box-sizing: border-box;
 }
 
-.str-field input:focus,
-.str-field select:focus,
-.str-field textarea:focus {
+.str-booking-widget .str-field input:focus,
+.str-booking-widget .str-field select:focus,
+.str-booking-widget .str-field textarea:focus {
 	outline: none;
 	border-color: #1a1a2e;
 	box-shadow: 0 0 0 3px rgba(26, 26, 46, 0.12);
 }
 
-.str-field input:disabled {
+.str-booking-widget .str-field input:disabled {
 	background: #f9fafb;
 	cursor: not-allowed;
 }
@@ -233,7 +233,7 @@
 	margin: 0 auto 20px;
 }
 
-.str-confirmation h2 {
+.str-booking-widget .str-confirmation h2 {
 	font-size: 28px;
 	margin: 0 0 8px;
 }
@@ -309,7 +309,7 @@
 	margin-bottom: 12px;
 }
 
-.str-cal-nav button {
+.str-availability-cal .str-cal-nav button {
 	background: none;
 	border: 1.5px solid #d1d5db;
 	border-radius: 4px;
@@ -319,7 +319,7 @@
 	color: #374151;
 }
 
-.str-cal-nav button:disabled {
+.str-availability-cal .str-cal-nav button:disabled {
 	opacity: 0.3;
 	cursor: not-allowed;
 }
