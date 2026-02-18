@@ -1,0 +1,394 @@
+/* STR Direct Booking — Frontend Styles */
+
+.str-booking-widget {
+	max-width: 680px;
+	margin: 0 auto;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	font-size: 16px;
+	color: #1a1a2e;
+}
+
+/* ── Step Nav ─────────────────────────────────────────────────────────────── */
+.str-steps {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 32px;
+	flex-wrap: wrap;
+}
+
+.str-step {
+	padding: 6px 14px;
+	border-radius: 20px;
+	font-size: 13px;
+	font-weight: 500;
+	background: #f1f5f9;
+	color: #64748b;
+}
+
+.str-step.is-active {
+	background: #1a1a2e;
+	color: #fff;
+}
+
+.str-step.is-complete {
+	background: #dcfce7;
+	color: #166534;
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+.str-field-group {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+@media ( max-width: 520px ) {
+	.str-field-group {
+		grid-template-columns: 1fr;
+	}
+}
+
+.str-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 16px;
+}
+
+.str-field label {
+	font-size: 14px;
+	font-weight: 600;
+	color: #374151;
+}
+
+.str-field input,
+.str-field select,
+.str-field textarea {
+	padding: 10px 12px;
+	border: 1.5px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 15px;
+	color: #1a1a2e;
+	background: #fff;
+	transition: border-color 0.15s;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.str-field input:focus,
+.str-field select:focus,
+.str-field textarea:focus {
+	outline: none;
+	border-color: #1a1a2e;
+	box-shadow: 0 0 0 3px rgba(26, 26, 46, 0.12);
+}
+
+.str-field input:disabled {
+	background: #f9fafb;
+	cursor: not-allowed;
+}
+
+.str-field-error {
+	font-size: 13px;
+	color: #dc2626;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.str-btn {
+	padding: 12px 24px;
+	border: none;
+	border-radius: 6px;
+	font-size: 15px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.15s, opacity 0.15s;
+	display: inline-block;
+	text-decoration: none;
+}
+
+.str-btn-primary {
+	background: #1a1a2e;
+	color: #fff;
+}
+
+.str-btn-primary:hover:not(:disabled) {
+	background: #2d2d4a;
+}
+
+.str-btn-primary:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.str-btn-secondary {
+	background: #f1f5f9;
+	color: #374151;
+}
+
+.str-btn-secondary:hover {
+	background: #e2e8f0;
+}
+
+.str-btn-row {
+	display: flex;
+	gap: 12px;
+	justify-content: flex-end;
+	margin-top: 24px;
+}
+
+/* ── Availability Status ──────────────────────────────────────────────────── */
+.str-availability-ok {
+	background: #dcfce7;
+	border: 1px solid #86efac;
+	border-radius: 6px;
+	padding: 12px 16px;
+	margin-bottom: 20px;
+	color: #166534;
+}
+
+.str-availability-unavailable {
+	background: #fee2e2;
+	border: 1px solid #fca5a5;
+	border-radius: 6px;
+	padding: 12px 16px;
+	margin-bottom: 20px;
+	color: #991b1b;
+}
+
+.str-status {
+	color: #64748b;
+	font-style: italic;
+}
+
+/* ── Pricing Summary ──────────────────────────────────────────────────────── */
+.str-pricing-summary {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 20px;
+	margin-bottom: 28px;
+}
+
+.str-summary-row {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 0;
+	border-bottom: 1px solid #f1f5f9;
+	font-size: 14px;
+}
+
+.str-summary-row:last-child {
+	border-bottom: none;
+}
+
+.str-summary-row.str-discount {
+	color: #16a34a;
+}
+
+.str-summary-row.str-total {
+	font-weight: 700;
+	font-size: 16px;
+	border-top: 2px solid #e2e8f0;
+	padding-top: 12px;
+	margin-top: 4px;
+}
+
+/* ── Payment Form ────────────────────────────────────────────────────────── */
+.str-payment-summary {
+	margin-bottom: 24px;
+}
+
+.str-total-due {
+	font-size: 18px;
+}
+
+.str-deposit-note,
+.str-secure-notice {
+	font-size: 13px;
+	color: #64748b;
+	margin-top: 12px;
+}
+
+.str-payment-loading {
+	text-align: center;
+	padding: 40px;
+	color: #64748b;
+}
+
+/* ── Confirmation ─────────────────────────────────────────────────────────── */
+.str-confirmation {
+	text-align: center;
+	padding: 32px 16px;
+}
+
+.str-confirmation-icon {
+	width: 64px;
+	height: 64px;
+	background: #16a34a;
+	color: #fff;
+	border-radius: 50%;
+	font-size: 32px;
+	line-height: 64px;
+	margin: 0 auto 20px;
+}
+
+.str-confirmation h2 {
+	font-size: 28px;
+	margin: 0 0 8px;
+}
+
+.str-confirmation-sub {
+	color: #64748b;
+	margin-bottom: 8px;
+}
+
+.str-confirmation-number {
+	font-size: 13px;
+	color: #94a3b8;
+	margin-bottom: 28px;
+}
+
+.str-confirmation-details {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 20px;
+	margin: 24px auto;
+	max-width: 400px;
+	text-align: left;
+}
+
+.str-detail-row {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 0;
+	border-bottom: 1px solid #f1f5f9;
+	font-size: 14px;
+}
+
+.str-detail-row:last-child {
+	border-bottom: none;
+}
+
+.str-detail-row.str-total {
+	font-weight: 700;
+	font-size: 16px;
+	border-top: 2px solid #e2e8f0;
+	padding-top: 12px;
+}
+
+.str-confirmation-next {
+	color: #64748b;
+	font-size: 14px;
+	max-width: 420px;
+	margin: 16px auto 0;
+}
+
+/* ── Error Message ───────────────────────────────────────────────────────── */
+.str-error-message {
+	background: #fee2e2;
+	border: 1px solid #fca5a5;
+	border-radius: 6px;
+	padding: 12px 16px;
+	margin-bottom: 20px;
+	color: #991b1b;
+	font-size: 14px;
+}
+
+/* ── Availability Calendar (public) ─────────────────────────────────────── */
+.str-availability-cal {
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	max-width: 360px;
+}
+
+.str-cal-nav {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+
+.str-cal-nav button {
+	background: none;
+	border: 1.5px solid #d1d5db;
+	border-radius: 4px;
+	padding: 4px 10px;
+	cursor: pointer;
+	font-size: 18px;
+	color: #374151;
+}
+
+.str-cal-nav button:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+.str-cal-month-label {
+	font-weight: 600;
+}
+
+.str-cal-weekdays,
+.str-cal-days {
+	display: grid;
+	grid-template-columns: repeat( 7, 1fr );
+	gap: 2px;
+}
+
+.str-cal-weekday {
+	text-align: center;
+	font-size: 11px;
+	font-weight: 600;
+	color: #94a3b8;
+	padding: 4px 0;
+}
+
+.str-cal-day {
+	aspect-ratio: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 13px;
+	border-radius: 4px;
+	cursor: default;
+}
+
+.str-cal-available {
+	background: #dcfce7;
+	color: #166534;
+}
+
+.str-cal-booked,
+.str-cal-blocked {
+	background: #fee2e2;
+	color: #991b1b;
+}
+
+.str-cal-past {
+	opacity: 0.4;
+}
+
+.str-cal-empty {
+	background: transparent;
+}
+
+.str-cal-legend {
+	display: flex;
+	gap: 16px;
+	margin-top: 12px;
+	font-size: 12px;
+	color: #64748b;
+}
+
+.str-legend-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.str-legend-dot {
+	width: 12px;
+	height: 12px;
+	border-radius: 3px;
+	display: inline-block;
+}

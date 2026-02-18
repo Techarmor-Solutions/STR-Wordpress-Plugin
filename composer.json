@@ -1,0 +1,19 @@
+{
+    "name": "str-direct-booking/plugin",
+    "description": "STR Direct Booking WordPress Plugin",
+    "type": "wordpress-plugin",
+    "require": {
+        "php": ">=8.0",
+        "kigkonsult/icalcreator": "^2.41",
+        "stripe/stripe-php": "^15.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "STRBooking\\": "includes/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

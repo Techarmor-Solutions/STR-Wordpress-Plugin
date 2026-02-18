@@ -1,0 +1,232 @@
+/* STR Direct Booking — Admin Styles */
+
+.str-admin-dashboard {
+	max-width: 960px;
+	margin: 24px 0;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── Metrics Grid ────────────────────────────────────────────────────────── */
+.str-metrics-grid {
+	display: grid;
+	grid-template-columns: repeat( 3, 1fr );
+	gap: 20px;
+	margin-bottom: 28px;
+}
+
+@media ( max-width: 640px ) {
+	.str-metrics-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.str-metric-card {
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 24px;
+	text-align: center;
+	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.06 );
+}
+
+.str-metric-value {
+	font-size: 36px;
+	font-weight: 700;
+	color: #1a1a2e;
+	line-height: 1;
+	margin-bottom: 8px;
+}
+
+.str-metric-label {
+	font-size: 13px;
+	color: #64748b;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+/* ── Admin Actions ───────────────────────────────────────────────────────── */
+.str-admin-actions {
+	display: flex;
+	gap: 12px;
+	margin-bottom: 32px;
+	flex-wrap: wrap;
+}
+
+.str-admin-btn {
+	display: inline-block;
+	padding: 8px 18px;
+	background: #1a1a2e;
+	color: #fff;
+	text-decoration: none;
+	border-radius: 5px;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	border: none;
+	transition: background 0.15s;
+}
+
+.str-admin-btn:hover,
+.str-admin-btn:focus {
+	background: #2d2d4a;
+	color: #fff;
+}
+
+.str-admin-btn-sm {
+	padding: 5px 12px;
+	font-size: 13px;
+}
+
+/* ── Property Section ────────────────────────────────────────────────────── */
+.str-property-section {
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 24px;
+	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.06 );
+}
+
+.str-property-section h3 {
+	margin: 0 0 16px;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.str-property-tabs {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 20px;
+	flex-wrap: wrap;
+}
+
+.str-property-tab {
+	padding: 6px 14px;
+	border: 1.5px solid #d1d5db;
+	border-radius: 5px;
+	background: #fff;
+	font-size: 13px;
+	cursor: pointer;
+	transition: all 0.15s;
+}
+
+.str-property-tab.is-active,
+.str-property-tab:hover {
+	background: #1a1a2e;
+	border-color: #1a1a2e;
+	color: #fff;
+}
+
+.str-property-actions {
+	margin-bottom: 16px;
+}
+
+/* ── Booking Calendar (admin) ────────────────────────────────────────────── */
+.str-booking-calendar {
+	max-width: 420px;
+}
+
+.str-cal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 16px;
+}
+
+.str-cal-header h4 {
+	margin: 0;
+	font-size: 15px;
+}
+
+.str-cal-header button {
+	background: none;
+	border: 1.5px solid #d1d5db;
+	border-radius: 4px;
+	padding: 4px 10px;
+	cursor: pointer;
+	font-size: 18px;
+}
+
+.str-cal-grid {
+	display: grid;
+	grid-template-columns: repeat( 7, 1fr );
+	gap: 3px;
+	margin-bottom: 8px;
+}
+
+.str-cal-grid .str-cal-weekday {
+	text-align: center;
+	font-size: 11px;
+	font-weight: 600;
+	color: #94a3b8;
+	padding: 4px 0;
+}
+
+.str-cal-grid .str-cal-day {
+	aspect-ratio: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 12px;
+	border-radius: 4px;
+}
+
+.str-cal-status-available {
+	background: #dcfce7;
+	color: #166534;
+}
+
+.str-cal-status-booked {
+	background: #fee2e2;
+	color: #991b1b;
+}
+
+.str-cal-status-blocked {
+	background: #fed7aa;
+	color: #c2410c;
+}
+
+.str-cal-legend {
+	display: flex;
+	gap: 16px;
+	margin-top: 12px;
+	font-size: 12px;
+	color: #64748b;
+	flex-wrap: wrap;
+}
+
+.str-cal-legend-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.str-cal-legend-dot {
+	width: 12px;
+	height: 12px;
+	border-radius: 3px;
+	display: inline-block;
+}
+
+/* ── Loading/Error States ────────────────────────────────────────────────── */
+.str-admin-loading,
+.str-admin-error,
+.str-cal-loading {
+	padding: 24px;
+	color: #64748b;
+	text-align: center;
+}
+
+.str-admin-error {
+	color: #dc2626;
+}
+
+.str-no-properties {
+	text-align: center;
+	padding: 40px;
+}
+
+.str-no-properties p {
+	color: #64748b;
+	margin-bottom: 16px;
+}
