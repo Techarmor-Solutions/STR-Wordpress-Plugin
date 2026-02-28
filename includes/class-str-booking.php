@@ -167,6 +167,11 @@ class STRBooking {
 			wp_schedule_event( time(), 'hourly', 'str_calendar_sync_cron' );
 		}
 
+		// Schedule cron to expire stale pending bookings
+		if ( ! wp_next_scheduled( 'str_expire_pending_bookings' ) ) {
+			wp_schedule_event( time(), 'hourly', 'str_expire_pending_bookings' );
+		}
+
 		// Flush rewrite rules for iCal endpoint and property slugs
 		flush_rewrite_rules();
 	}
@@ -177,6 +182,7 @@ class STRBooking {
 	public static function deactivate(): void {
 		// Clear scheduled cron jobs
 		wp_clear_scheduled_hook( 'str_calendar_sync_cron' );
+		wp_clear_scheduled_hook( 'str_expire_pending_bookings' );
 
 		// Clear any pending notification hooks
 		wp_clear_scheduled_hook( 'str_send_notification' );

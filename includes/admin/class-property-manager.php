@@ -757,16 +757,11 @@ class PropertyManager {
 			wp_send_json_error( __( 'Invalid status.', 'str-direct-booking' ) );
 		}
 
-		$result = wp_update_post(
-			array(
-				'ID'          => $booking_id,
-				'post_status' => $new_status,
-			),
-			true
-		);
+		$booking_manager = new \STRBooking\BookingManager();
+		$success         = $booking_manager->update_booking_status( $booking_id, $new_status );
 
-		if ( is_wp_error( $result ) ) {
-			wp_send_json_error( $result->get_error_message() );
+		if ( ! $success ) {
+			wp_send_json_error( __( 'Could not update status.', 'str-direct-booking' ) );
 		}
 
 		wp_send_json_success( array( 'status' => $new_status ) );

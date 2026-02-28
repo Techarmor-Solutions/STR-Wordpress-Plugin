@@ -24,6 +24,32 @@ class BookingManager {
 	private const VALID_STATUSES = array( 'pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'refunded' );
 
 	/**
+	 * Constructor — register cron action.
+	 */
+	public function __construct() {
+		add_action( 'str_expire_pending_bookings', array( $this, 'expire_pending_bookings' ) );
+	}
+
+	/**
+	 * Cancel pending bookings older than 2 hours so they stop blocking dates.
+	 */
+	public function expire_pending_bookings(): void {
+		$cutoff      = date( 'Y-m-d H:i:s', time() - 2 * HOUR_IN_SECONDS );
+		$old_pending = get_posts(
+			array(
+				'post_type'      => 'str_booking',
+				'post_status'    => 'pending',
+				'date_query'     => array( array( 'before' => $cutoff ) ),
+				'fields'         => 'ids',
+				'posts_per_page' => -1,
+			)
+		);
+		foreach ( $old_pending as $id ) {
+			$this->update_booking_status( (int) $id, 'cancelled' );
+		}
+	}
+
+	/**
 	 * Create a new booking.
 	 *
 	 * @param array $data Booking data.
@@ -157,7 +183,18 @@ class BookingManager {
 			)
 		);
 
-		return ! is_wp_error( $result ) && $result > 0;
+		$success = ! is_wp_error( $result ) && $result > 0;
+
+		if ( $success && in_array( $status, array( 'cancelled', 'refunded' ), true ) ) {
+			$property_id = (int) get_post_meta( $id, 'str_property_id', true );
+			$check_in    = get_post_meta( $id, 'str_check_in', true );
+			$check_out   = get_post_meta( $id, 'str_check_out', true );
+			if ( $property_id && $check_in && $check_out ) {
+				$this->mark_dates_available( $property_id, $check_in, $check_out );
+			}
+		}
+
+		return $success;
 	}
 
 	/**
@@ -171,7 +208,7 @@ class BookingManager {
 	public function get_bookings_for_property( int $property_id, string $start, string $end ): array {
 		$args = array(
 			'post_type'      => 'str_booking',
-			'post_status'    => array( 'pending', 'confirmed', 'checked_in', 'checked_out' ),
+			'post_status'    => array( 'confirmed', 'checked_in', 'checked_out' ),
 			'posts_per_page' => -1,
 			'meta_query'     => array(
 				'relation' => 'AND',
