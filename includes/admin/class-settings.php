@@ -24,6 +24,23 @@ class Settings {
 	}
 
 	/**
+	 * Return a sanitize callback that preserves the existing option value when
+	 * an empty string is submitted — prevents password fields from clearing on save.
+	 *
+	 * @param string $option_name WP option name.
+	 * @return \Closure
+	 */
+	private function preserve_existing_on_empty( string $option_name ): \Closure {
+		return static function ( $value ) use ( $option_name ) {
+			$value = sanitize_text_field( $value );
+			if ( '' === $value ) {
+				return get_option( $option_name, '' );
+			}
+			return $value;
+		};
+	}
+
+	/**
 	 * Register all plugin settings.
 	 */
 	public function register_settings(): void {
@@ -57,7 +74,10 @@ class Settings {
 		);
 
 		foreach ( $stripe_fields as $option_name => $field ) {
-			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => 'sanitize_text_field' ) );
+			$callback = 'password' === ( $field['type'] ?? 'text' )
+				? $this->preserve_existing_on_empty( $option_name )
+				: 'sanitize_text_field';
+			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => $callback ) );
 		}
 
 		// Empty title — we render the <h2> manually inside the div so JS can
@@ -95,7 +115,10 @@ class Settings {
 		);
 
 		foreach ( $square_fields as $option_name => $field ) {
-			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => 'sanitize_text_field' ) );
+			$callback = 'password' === ( $field['type'] ?? 'text' )
+				? $this->preserve_existing_on_empty( $option_name )
+				: 'sanitize_text_field';
+			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => $callback ) );
 		}
 
 		register_setting(
@@ -223,7 +246,10 @@ class Settings {
 		);
 
 		foreach ( $notification_fields as $option_name => $field ) {
-			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => 'sanitize_text_field' ) );
+			$callback = 'password' === ( $field['type'] ?? 'text' )
+				? $this->preserve_existing_on_empty( $option_name )
+				: 'sanitize_text_field';
+			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => $callback ) );
 			add_settings_field(
 				$option_name,
 				$field['label'],
@@ -251,7 +277,7 @@ class Settings {
 		register_setting(
 			'str_booking_settings',
 			'str_booking_github_token',
-			array( 'sanitize_callback' => 'sanitize_text_field' )
+			array( 'sanitize_callback' => $this->preserve_existing_on_empty( 'str_booking_github_token' ) )
 		);
 
 		add_settings_field(
@@ -514,13 +540,23 @@ class Settings {
 				esc_html( $field['label'] )
 			);
 			echo '<td>';
-			printf(
-				'<input type="%s" id="%s" name="%s" value="%s" class="regular-text" />',
-				esc_attr( $type ),
-				esc_attr( $option_name ),
-				esc_attr( $option_name ),
-				'password' === $type ? '' : esc_attr( $value )
-			);
+			if ( 'password' === $type ) {
+				$placeholder = ! empty( $value ) ? __( 'Saved — enter new value to change', 'str-direct-booking' ) : '';
+				printf(
+					'<input type="password" id="%s" name="%s" value="" placeholder="%s" class="regular-text" autocomplete="new-password" />',
+					esc_attr( $option_name ),
+					esc_attr( $option_name ),
+					esc_attr( $placeholder )
+				);
+			} else {
+				printf(
+					'<input type="%s" id="%s" name="%s" value="%s" class="regular-text" />',
+					esc_attr( $type ),
+					esc_attr( $option_name ),
+					esc_attr( $option_name ),
+					esc_attr( $value )
+				);
+			}
 			if ( ! empty( $field['description'] ) ) {
 				printf( '<p class="description">%s</p>', esc_html( $field['description'] ) );
 			}
@@ -552,14 +588,25 @@ class Settings {
 			$extra .= sprintf( ' max="%s"', esc_attr( $args['max'] ) );
 		}
 
-		printf(
-			'<input type="%s" id="%s" name="%s" value="%s" class="regular-text"%s />',
-			esc_attr( $type ),
-			esc_attr( $option_name ),
-			esc_attr( $option_name ),
-			'password' === $type ? '' : esc_attr( $value ),
-			$extra
-		);
+		if ( 'password' === $type ) {
+			$placeholder = ! empty( $value ) ? __( 'Saved — enter new value to change', 'str-direct-booking' ) : '';
+			printf(
+				'<input type="password" id="%s" name="%s" value="" placeholder="%s" class="regular-text" autocomplete="new-password"%s />',
+				esc_attr( $option_name ),
+				esc_attr( $option_name ),
+				esc_attr( $placeholder ),
+				$extra
+			);
+		} else {
+			printf(
+				'<input type="%s" id="%s" name="%s" value="%s" class="regular-text"%s />',
+				esc_attr( $type ),
+				esc_attr( $option_name ),
+				esc_attr( $option_name ),
+				esc_attr( $value ),
+				$extra
+			);
+		}
 
 		if ( $description ) {
 			printf( '<p class="description">%s</p>', esc_html( $description ) );

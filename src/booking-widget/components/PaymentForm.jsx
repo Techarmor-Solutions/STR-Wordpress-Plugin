@@ -5,10 +5,16 @@
  */
 
 import { useState, useEffect, useRef } from '@wordpress/element';
-import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import apiFetch from '@wordpress/api-fetch';
 
 const { apiUrl } = window.strBookingData || {};
+
+// Stripe promise — created once at module level so loadStripe is never called twice.
+const stripePromise = window.strBookingData?.stripePublishableKey
+	? loadStripe( window.strBookingData.stripePublishableKey )
+	: null;
 
 function formatCurrency( amount, currency = 'usd' ) {
 	return new Intl.NumberFormat( 'en-US', {
@@ -187,89 +193,31 @@ function SquarePaymentForm( {
 	);
 }
 
-// ── Stripe Payment Form ───────────────────────────────────────────────────────
+// ── Stripe inner payment form (requires Elements context) ─────────────────────
+// Split out so useStripe/useElements hooks are always inside an Elements provider.
 
-function StripePaymentForm( {
-	propertyId,
-	dates,
+function StripePaymentInner( {
 	pricing,
 	guestDetails,
-	paymentPlan,
+	bookingId,
+	depositAmount,
+	plan,
+	currency,
+	installmentSchedule,
 	onSuccess,
 	onBack,
 	onError,
 } ) {
-	const stripe = useStripe();
+	const stripe   = useStripe();
 	const elements = useElements();
 
-	const [ clientSecret, setClientSecret ] = useState( null );
-	const [ bookingId, setBookingId ] = useState( null );
-	const [ installmentSchedule, setInstallmentSchedule ] = useState( null );
-	const [ isCreatingBooking, setIsCreatingBooking ] = useState( false );
-	const [ isProcessing, setIsProcessing ] = useState( false );
-	const [ bookingCreated, setBookingCreated ] = useState( false );
+	const [ isProcessing, setIsProcessing ]     = useState( false );
 	const [ paymentConfirmed, setPaymentConfirmed ] = useState( false );
-
-	const { currency } = window.strBookingData || {};
-
-	const plan          = paymentPlan?.plan || 'pay_in_full';
-	const depositAmount = paymentPlan?.depositAmount || pricing?.total || 0;
-
-	// Create booking and get client_secret on mount
-	useState( () => {
-		createBookingIntent();
-	} );
-
-	async function createBookingIntent() {
-		setIsCreatingBooking( true );
-
-		try {
-			const body = {
-				property_id:      propertyId,
-				check_in:         dates.checkIn,
-				check_out:        dates.checkOut,
-				guest_name:       guestDetails.guest_name,
-				guest_email:      guestDetails.guest_email,
-				guest_phone:      guestDetails.guest_phone || '',
-				guest_count:      guestDetails.guest_count || 1,
-				special_requests: guestDetails.special_requests || '',
-				payment_plan:     plan,
-			};
-
-			if ( 'four_payment' === plan ) {
-				body.deposit_amount = depositAmount;
-			}
-
-			const result = await apiFetch( {
-				url:    `${ apiUrl }/booking`,
-				method: 'POST',
-				data:   body,
-			} );
-
-			setClientSecret( result.client_secret );
-			setBookingId( result.booking_id );
-
-			if ( result.installment_schedule ) {
-				setInstallmentSchedule( result.installment_schedule );
-			}
-
-			setBookingCreated( true );
-		} catch ( err ) {
-			onError(
-				err?.message ||
-					'Could not initialize payment. Please go back and try again.'
-			);
-		} finally {
-			setIsCreatingBooking( false );
-		}
-	}
 
 	async function handleSubmit( e ) {
 		e.preventDefault();
 
-		if ( ! stripe || ! elements || ! clientSecret ) {
-			return;
-		}
+		if ( ! stripe || ! elements ) return;
 
 		setIsProcessing( true );
 
@@ -307,7 +255,6 @@ function StripePaymentForm( {
 		} );
 	}
 
-	// Show installment summary after payment in the success state
 	if ( paymentConfirmed && installmentSchedule ) {
 		return (
 			<InstallmentSummary
@@ -317,29 +264,6 @@ function StripePaymentForm( {
 			/>
 		);
 	}
-
-	if ( isCreatingBooking ) {
-		return (
-			<div className="str-payment-loading">
-				<p>Preparing your booking...</p>
-			</div>
-		);
-	}
-
-	if ( ! bookingCreated ) {
-		return null;
-	}
-
-	const stripeOptions = {
-		clientSecret,
-		appearance: {
-			theme: 'stripe',
-			variables: {
-				colorPrimary: '#1a1a2e',
-				borderRadius: '6px',
-			},
-		},
-	};
 
 	const isDueToday    = plan !== 'pay_in_full';
 	const displayAmount = isDueToday ? depositAmount : pricing?.total;
@@ -378,12 +302,7 @@ function StripePaymentForm( {
 			</div>
 
 			<form onSubmit={ handleSubmit }>
-				{ clientSecret && (
-					<PaymentElement
-						id="str-payment-element"
-						options={ stripeOptions }
-					/>
-				) }
+				<PaymentElement id="str-payment-element" />
 
 				<div className="str-btn-row" style={ { marginTop: '24px' } }>
 					<button
@@ -410,6 +329,122 @@ function StripePaymentForm( {
 				</p>
 			</form>
 		</div>
+	);
+}
+
+// ── Stripe outer form — fetches clientSecret then mounts Elements ─────────────
+
+function StripePaymentForm( {
+	propertyId,
+	dates,
+	pricing,
+	guestDetails,
+	paymentPlan,
+	onSuccess,
+	onBack,
+	onError,
+} ) {
+	const [ clientSecret, setClientSecret ]           = useState( null );
+	const [ bookingId, setBookingId ]                 = useState( null );
+	const [ installmentSchedule, setInstallmentSchedule ] = useState( null );
+	const [ isCreatingBooking, setIsCreatingBooking ] = useState( true ); // true = show loading on first render
+
+	const { currency } = window.strBookingData || {};
+
+	const plan          = paymentPlan?.plan || 'pay_in_full';
+	const depositAmount = paymentPlan?.depositAmount || pricing?.total || 0;
+
+	// Create booking + obtain clientSecret once on mount
+	useEffect( () => {
+		createBookingIntent();
+	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps
+
+	async function createBookingIntent() {
+		try {
+			const body = {
+				property_id:      propertyId,
+				check_in:         dates.checkIn,
+				check_out:        dates.checkOut,
+				guest_name:       guestDetails.guest_name,
+				guest_email:      guestDetails.guest_email,
+				guest_phone:      guestDetails.guest_phone || '',
+				guest_count:      guestDetails.guest_count || 1,
+				special_requests: guestDetails.special_requests || '',
+				payment_plan:     plan,
+			};
+
+			if ( 'four_payment' === plan ) {
+				body.deposit_amount = depositAmount;
+			}
+
+			const result = await apiFetch( {
+				url:    `${ apiUrl }/booking`,
+				method: 'POST',
+				data:   body,
+			} );
+
+			setClientSecret( result.client_secret );
+			setBookingId( result.booking_id );
+
+			if ( result.installment_schedule ) {
+				setInstallmentSchedule( result.installment_schedule );
+			}
+		} catch ( err ) {
+			onError(
+				err?.message ||
+					'Could not initialize payment. Please go back and try again.'
+			);
+		} finally {
+			setIsCreatingBooking( false );
+		}
+	}
+
+	if ( isCreatingBooking ) {
+		return (
+			<div className="str-payment-loading">
+				<p>Preparing your booking...</p>
+			</div>
+		);
+	}
+
+	// Booking creation failed — show a back button so the user isn't stuck
+	if ( ! clientSecret ) {
+		return (
+			<div className="str-btn-row">
+				<button
+					type="button"
+					className="str-btn str-btn-secondary"
+					onClick={ onBack }
+				>
+					← Back
+				</button>
+			</div>
+		);
+	}
+
+	const appearance = {
+		theme: 'stripe',
+		variables: {
+			colorPrimary: '#1a1a2e',
+			borderRadius: '6px',
+		},
+	};
+
+	return (
+		<Elements stripe={ stripePromise } options={ { clientSecret, appearance } }>
+			<StripePaymentInner
+				pricing={ pricing }
+				guestDetails={ guestDetails }
+				bookingId={ bookingId }
+				depositAmount={ depositAmount }
+				plan={ plan }
+				currency={ currency }
+				installmentSchedule={ installmentSchedule }
+				onSuccess={ onSuccess }
+				onBack={ onBack }
+				onError={ onError }
+			/>
+		</Elements>
 	);
 }
 

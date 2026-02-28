@@ -110,6 +110,14 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 	async function handleContinue() {
 		if ( ! checkIn || ! checkOut || ! availability ) return;
 
+		if ( nights < minNights ) {
+			onError(
+				`Minimum stay is ${ minNights } ${ minNights === 1 ? 'night' : 'nights' }. ` +
+				`Please select a check-out date at least ${ minNights } ${ minNights === 1 ? 'night' : 'nights' } after check-in.`
+			);
+			return;
+		}
+
 		setIsLoadingPricing( true );
 
 		try {
@@ -195,6 +203,12 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 					</select>
 				</div>
 			</div>
+
+			{ minNights > 1 && (
+				<p className="str-min-nights-note">
+					Minimum stay: { minNights } nights
+				</p>
+			) }
 
 			{ isChecking && (
 				<p className="str-status">Checking availability...</p>

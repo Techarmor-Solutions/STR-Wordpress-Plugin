@@ -5,8 +5,6 @@
  */
 
 import { useState } from '@wordpress/element';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements } from '@stripe/react-stripe-js';
 import DatePicker from './DatePicker';
 import GuestForm from './GuestForm';
 import PaymentPlanSelector from './PaymentPlanSelector';
@@ -22,10 +20,6 @@ const STEPS = {
 };
 
 const { activeGateway } = window.strBookingData || {};
-
-const stripePromise = ( ! activeGateway || activeGateway === 'stripe' )
-	? loadStripe( window.strBookingData?.stripePublishableKey || '' )
-	: null;
 
 export default function BookingWidget( { propertyId } ) {
 	const [ step, setStep ] = useState( STEPS.DATES );
@@ -181,31 +175,16 @@ export default function BookingWidget( { propertyId } ) {
 			) }
 
 			{ step === STEPS.PAYMENT && (
-				activeGateway === 'square' ? (
-					<PaymentForm
-						propertyId={ propertyId }
-						dates={ dates }
-						pricing={ pricing }
-						guestDetails={ guestDetails }
-						paymentPlan={ paymentPlan }
-						onSuccess={ handlePaymentSuccess }
-						onBack={ handleBack }
-						onError={ setError }
-					/>
-				) : (
-					<Elements stripe={ stripePromise }>
-						<PaymentForm
-							propertyId={ propertyId }
-							dates={ dates }
-							pricing={ pricing }
-							guestDetails={ guestDetails }
-							paymentPlan={ paymentPlan }
-							onSuccess={ handlePaymentSuccess }
-							onBack={ handleBack }
-							onError={ setError }
-						/>
-					</Elements>
-				)
+				<PaymentForm
+					propertyId={ propertyId }
+					dates={ dates }
+					pricing={ pricing }
+					guestDetails={ guestDetails }
+					paymentPlan={ paymentPlan }
+					onSuccess={ handlePaymentSuccess }
+					onBack={ handleBack }
+					onError={ setError }
+				/>
 			) }
 
 			{ step === STEPS.CONFIRMATION && (

@@ -25,6 +25,11 @@ class PropertyManager {
 		add_action( 'save_post_str_booking', array( $this, 'save_booking_meta' ), 10 );
 		add_filter( 'manage_str_property_posts_columns', array( $this, 'add_shortcode_column' ) );
 		add_action( 'manage_str_property_posts_custom_column', array( $this, 'render_shortcode_column' ), 10, 2 );
+		// Booking list admin improvements
+		add_action( 'pre_get_posts', array( $this, 'fix_booking_all_query' ) );
+		add_filter( 'views_edit-str_booking', array( $this, 'booking_status_views' ) );
+		add_action( 'admin_notices', array( $this, 'pending_bookings_notice' ) );
+		add_action( 'wp_ajax_str_update_booking_status', array( $this, 'handle_booking_status_ajax' ) );
 	}
 
 	/**
@@ -225,6 +230,15 @@ class PropertyManager {
 			array( $this, 'render_booking_meta_box' ),
 			'str_booking',
 			'normal',
+			'high'
+		);
+
+		add_meta_box(
+			'str_booking_actions',
+			__( 'Booking Actions', 'str-direct-booking' ),
+			array( $this, 'render_booking_actions_meta_box' ),
+			'str_booking',
+			'side',
 			'high'
 		);
 	}
@@ -511,5 +525,250 @@ class PropertyManager {
 	public function save_booking_meta( int $post_id ): void {
 		// Booking meta is managed programmatically via BookingManager.
 		// This hook is intentionally minimal to prevent admin overwrites.
+	}
+
+	// ── Booking admin improvements ────────────────────────────────────────────
+
+	/**
+	 * Ensure all custom booking statuses are included when viewing "All" bookings.
+	 *
+	 * @param \WP_Query $query Current query.
+	 */
+	public function fix_booking_all_query( \WP_Query $query ): void {
+		if ( ! is_admin() || ! $query->is_main_query() ) {
+			return;
+		}
+
+		$screen = get_current_screen();
+		if ( ! $screen || 'edit-str_booking' !== $screen->id ) {
+			return;
+		}
+
+		// Only override when no specific status filter is in the URL
+		if ( empty( $_GET['post_status'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$query->set(
+				'post_status',
+				array( 'pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'refunded' )
+			);
+		}
+	}
+
+	/**
+	 * Add correctly-counted status filter links to the bookings list table.
+	 *
+	 * @param array $views Existing view links.
+	 * @return array Modified view links.
+	 */
+	public function booking_status_views( array $views ): array {
+		$statuses = array(
+			'pending'     => __( 'Pending', 'str-direct-booking' ),
+			'confirmed'   => __( 'Confirmed', 'str-direct-booking' ),
+			'checked_in'  => __( 'Checked In', 'str-direct-booking' ),
+			'checked_out' => __( 'Checked Out', 'str-direct-booking' ),
+			'cancelled'   => __( 'Cancelled', 'str-direct-booking' ),
+			'refunded'    => __( 'Refunded', 'str-direct-booking' ),
+		);
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$current_status = isset( $_GET['post_status'] ) ? sanitize_key( $_GET['post_status'] ) : '';
+
+		foreach ( $statuses as $status => $label ) {
+			$count = (int) ( new \WP_Query( array(
+				'post_type'      => 'str_booking',
+				'post_status'    => $status,
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+			) ) )->found_posts;
+
+			$url            = admin_url( 'edit.php?post_type=str_booking&post_status=' . $status );
+			$is_current     = ( $status === $current_status );
+			$views[ $status ] = sprintf(
+				'<a href="%s"%s>%s <span class="count">(%d)</span></a>',
+				esc_url( $url ),
+				$is_current ? ' class="current" aria-current="page"' : '',
+				esc_html( $label ),
+				$count
+			);
+		}
+
+		return $views;
+	}
+
+	/**
+	 * Show an admin notice when there are pending bookings awaiting confirmation.
+	 */
+	public function pending_bookings_notice(): void {
+		$screen = get_current_screen();
+		if ( ! $screen ) {
+			return;
+		}
+
+		// Show on the STR Booking dashboard and the bookings list
+		if ( ! in_array( $screen->id, array( 'toplevel_page_str-booking', 'edit-str_booking' ), true ) ) {
+			return;
+		}
+
+		$pending_count = (int) ( new \WP_Query( array(
+			'post_type'      => 'str_booking',
+			'post_status'    => 'pending',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+		) ) )->found_posts;
+
+		if ( 0 === $pending_count ) {
+			return;
+		}
+
+		$url = admin_url( 'edit.php?post_type=str_booking&post_status=pending' );
+
+		printf(
+			'<div class="notice notice-warning is-dismissible"><p>' .
+			/* translators: %1$s: URL, %2$d: count */
+			esc_html( _n(
+				'STR Booking: %2$d booking is pending payment confirmation.',
+				'STR Booking: %2$d bookings are pending payment confirmation.',
+				$pending_count,
+				'str-direct-booking'
+			) ) .
+			' <a href="%1$s">' . esc_html__( 'View pending bookings', 'str-direct-booking' ) . '</a></p></div>',
+			esc_url( $url ),
+			$pending_count
+		);
+	}
+
+	/**
+	 * Render the Booking Actions meta box (status change via AJAX).
+	 *
+	 * @param \WP_Post $post Current booking post.
+	 */
+	public function render_booking_actions_meta_box( \WP_Post $post ): void {
+		$current = $post->post_status;
+
+		$statuses = array(
+			'pending'     => __( 'Pending', 'str-direct-booking' ),
+			'confirmed'   => __( 'Confirmed', 'str-direct-booking' ),
+			'checked_in'  => __( 'Checked In', 'str-direct-booking' ),
+			'checked_out' => __( 'Checked Out', 'str-direct-booking' ),
+			'cancelled'   => __( 'Cancelled', 'str-direct-booking' ),
+			'refunded'    => __( 'Refunded', 'str-direct-booking' ),
+		);
+
+		$current_label = $statuses[ $current ] ?? $current;
+		$nonce         = wp_create_nonce( 'str_booking_status_' . $post->ID );
+		?>
+		<p style="margin:0 0 8px">
+			<strong><?php esc_html_e( 'Current Status', 'str-direct-booking' ); ?>:</strong>
+			<span id="str-current-status-label" style="margin-left:6px;font-weight:600">
+				<?php echo esc_html( $current_label ); ?>
+			</span>
+		</p>
+
+		<select id="str-booking-status-select" style="width:100%;margin-bottom:8px">
+			<?php foreach ( $statuses as $slug => $label ) : ?>
+				<option value="<?php echo esc_attr( $slug ); ?>"<?php selected( $current, $slug ); ?>>
+					<?php echo esc_html( $label ); ?>
+				</option>
+			<?php endforeach; ?>
+		</select>
+
+		<button
+			type="button"
+			id="str-update-status-btn"
+			class="button button-primary"
+			style="width:100%"
+		>
+			<?php esc_html_e( 'Update Status', 'str-direct-booking' ); ?>
+		</button>
+
+		<p id="str-status-msg" style="margin:8px 0 0;display:none;font-size:13px"></p>
+
+		<script>
+		(function() {
+			var btn    = document.getElementById('str-update-status-btn');
+			var select = document.getElementById('str-booking-status-select');
+			var msg    = document.getElementById('str-status-msg');
+			var label  = document.getElementById('str-current-status-label');
+
+			if ( ! btn ) return;
+
+			var labels = <?php echo wp_json_encode( $statuses ); ?>;
+
+			btn.addEventListener('click', function() {
+				btn.disabled    = true;
+				btn.textContent = '<?php echo esc_js( __( 'Updating…', 'str-direct-booking' ) ); ?>';
+				msg.style.display = 'none';
+
+				var fd = new FormData();
+				fd.append('action',     'str_update_booking_status');
+				fd.append('booking_id', '<?php echo esc_js( (string) $post->ID ); ?>');
+				fd.append('status',     select.value);
+				fd.append('_wpnonce',   '<?php echo esc_js( $nonce ); ?>');
+
+				fetch(ajaxurl, { method: 'POST', body: fd })
+					.then(function(r) { return r.json(); })
+					.then(function(res) {
+						msg.style.display = '';
+						if ( res.success ) {
+							label.textContent    = labels[select.value] || select.value;
+							msg.style.color      = '#00a32a';
+							msg.textContent      = '<?php echo esc_js( __( 'Status updated successfully.', 'str-direct-booking' ) ); ?>';
+						} else {
+							msg.style.color = '#d63638';
+							msg.textContent = res.data || '<?php echo esc_js( __( 'Update failed.', 'str-direct-booking' ) ); ?>';
+						}
+					})
+					.catch(function() {
+						msg.style.display = '';
+						msg.style.color   = '#d63638';
+						msg.textContent   = '<?php echo esc_js( __( 'Request failed. Please try again.', 'str-direct-booking' ) ); ?>';
+					})
+					.finally(function() {
+						btn.disabled    = false;
+						btn.textContent = '<?php echo esc_js( __( 'Update Status', 'str-direct-booking' ) ); ?>';
+					});
+			});
+		})();
+		</script>
+		<?php
+	}
+
+	/**
+	 * Handle AJAX booking status update from the Booking Actions meta box.
+	 */
+	public function handle_booking_status_ajax(): void {
+		$booking_id = isset( $_POST['booking_id'] ) ? absint( $_POST['booking_id'] ) : 0;
+
+		if ( ! $booking_id ) {
+			wp_send_json_error( __( 'Invalid booking ID.', 'str-direct-booking' ) );
+		}
+
+		if ( ! check_ajax_referer( 'str_booking_status_' . $booking_id, '_wpnonce', false ) ) {
+			wp_send_json_error( __( 'Security check failed.', 'str-direct-booking' ) );
+		}
+
+		if ( ! current_user_can( 'edit_post', $booking_id ) ) {
+			wp_send_json_error( __( 'Permission denied.', 'str-direct-booking' ) );
+		}
+
+		$valid_statuses = array( 'pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'refunded' );
+		$new_status     = isset( $_POST['status'] ) ? sanitize_key( $_POST['status'] ) : '';
+
+		if ( ! in_array( $new_status, $valid_statuses, true ) ) {
+			wp_send_json_error( __( 'Invalid status.', 'str-direct-booking' ) );
+		}
+
+		$result = wp_update_post(
+			array(
+				'ID'          => $booking_id,
+				'post_status' => $new_status,
+			),
+			true
+		);
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( $result->get_error_message() );
+		}
+
+		wp_send_json_success( array( 'status' => $new_status ) );
 	}
 }
