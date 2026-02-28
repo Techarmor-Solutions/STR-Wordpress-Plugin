@@ -85,6 +85,9 @@ class PluginUpdater {
 		add_filter( 'plugins_api', array( $this, 'plugin_info' ), 10, 3 );
 		add_filter( 'upgrader_source_selection', array( $this, 'fix_source_folder' ), 10, 4 );
 		add_action( 'upgrader_process_complete', array( $this, 'clear_cache' ), 10, 2 );
+		add_filter( 'plugin_action_links_' . $this->plugin_basename, array( $this, 'add_force_check_link' ) );
+		add_action( 'admin_init', array( $this, 'handle_force_check' ) );
+		add_action( 'admin_notices', array( $this, 'force_check_admin_notice' ) );
 	}
 
 	/**
@@ -279,5 +282,67 @@ class PluginUpdater {
 		) {
 			delete_transient( $this->cache_key );
 		}
+	}
+
+	/**
+	 * Add a "Force Update Check" link to this plugin's action links on the Plugins screen.
+	 *
+	 * @param array $links Existing action links.
+	 * @return array Modified action links.
+	 */
+	public function add_force_check_link( array $links ): array {
+		$url = wp_nonce_url(
+			add_query_arg( 'str_force_update_check', '1', admin_url( 'plugins.php' ) ),
+			'str_force_update_check'
+		);
+		$force_link = '<a href="' . esc_url( $url ) . '">' . esc_html__( 'Force Update Check', 'str-direct-booking' ) . '</a>';
+		array_unshift( $links, $force_link );
+		return $links;
+	}
+
+	/**
+	 * Handle the force-check request: verify nonce + cap, delete transient, redirect.
+	 */
+	public function handle_force_check(): void {
+		if ( ! isset( $_GET['str_force_update_check'] ) ) {
+			return;
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to perform this action.', 'str-direct-booking' ) );
+		}
+
+		check_admin_referer( 'str_force_update_check' );
+
+		delete_transient( $this->cache_key );
+
+		$redirect = add_query_arg(
+			array(
+				'str_update_cache_cleared' => '1',
+				'paged'                    => isset( $_GET['paged'] ) ? absint( $_GET['paged'] ) : false,
+			),
+			admin_url( 'plugins.php' )
+		);
+
+		wp_safe_redirect( $redirect );
+		exit;
+	}
+
+	/**
+	 * Display an admin notice after a successful force-check cache clear.
+	 */
+	public function force_check_admin_notice(): void {
+		if ( empty( $_GET['str_update_cache_cleared'] ) ) {
+			return;
+		}
+
+		$screen = get_current_screen();
+		if ( ! $screen || 'plugins' !== $screen->id ) {
+			return;
+		}
+
+		echo '<div class="notice notice-success is-dismissible"><p>'
+			. esc_html__( 'Update cache cleared — WordPress will check for updates shortly.', 'str-direct-booking' )
+			. '</p></div>';
 	}
 }
