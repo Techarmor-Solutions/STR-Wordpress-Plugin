@@ -88,6 +88,26 @@ class PluginUpdater {
 		add_filter( 'plugin_action_links_' . $this->plugin_basename, array( $this, 'add_force_check_link' ) );
 		add_action( 'admin_init', array( $this, 'handle_force_check' ) );
 		add_action( 'admin_notices', array( $this, 'force_check_admin_notice' ) );
+		// Inject GitHub auth token into all HTTP requests that target GitHub
+		add_filter( 'http_request_args', array( $this, 'maybe_add_github_auth' ), 10, 2 );
+	}
+
+	/**
+	 * Return the currently-installed version by reading the plugin file header directly.
+	 *
+	 * Using get_plugin_data() instead of the STR_BOOKING_VERSION constant avoids a
+	 * stale-constant problem: after WordPress replaces the plugin files the constant
+	 * in the running PHP process still holds the old value, but the file on disk has
+	 * already been updated.  Reading the file gives us the true installed version.
+	 *
+	 * @return string
+	 */
+	private function get_installed_version(): string {
+		if ( ! function_exists( 'get_plugin_data' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		$data = get_plugin_data( $this->plugin_file, false, false );
+		return $data['Version'] ?? STR_BOOKING_VERSION;
 	}
 
 	/**
@@ -147,6 +167,32 @@ class PluginUpdater {
 	}
 
 	/**
+	 * Inject the GitHub token into requests that target GitHub URLs.
+	 *
+	 * This ensures the zip download (zipball or release asset) succeeds for
+	 * private repositories and avoids anonymous rate-limiting for public ones.
+	 *
+	 * @param array  $args HTTP request arguments.
+	 * @param string $url  Request URL.
+	 * @return array Modified arguments.
+	 */
+	public function maybe_add_github_auth( array $args, string $url ): array {
+		if ( ! str_contains( $url, 'github.com' ) && ! str_contains( $url, 'githubusercontent.com' ) ) {
+			return $args;
+		}
+
+		$token = get_option( 'str_booking_github_token', '' );
+		if ( ! empty( $token ) ) {
+			if ( ! isset( $args['headers'] ) ) {
+				$args['headers'] = array();
+			}
+			$args['headers']['Authorization'] = 'Bearer ' . $token;
+		}
+
+		return $args;
+	}
+
+	/**
 	 * Inject update data into the WordPress update transient when a newer version exists.
 	 *
 	 * @param object $transient The update_plugins site transient.
@@ -169,11 +215,17 @@ class PluginUpdater {
 			return $transient;
 		}
 
-		if ( ! version_compare( $new_version, STR_BOOKING_VERSION, '>' ) ) {
+		// Read from the file on disk so we get the true installed version even if
+		// the PHP constant is stale (i.e. files just replaced in the same request).
+		$installed_version = $this->get_installed_version();
+
+		if ( ! version_compare( $new_version, $installed_version, '>' ) ) {
+			// No update needed — make sure we're not lingering in the response list.
+			unset( $transient->response[ $this->plugin_basename ] );
 			return $transient;
 		}
 
-		// Find the attached zip asset, falling back to the zipball.
+		// Prefer an attached .zip asset; fall back to the GitHub zipball.
 		$download_url = $release['zipball_url'] ?? '';
 		if ( ! empty( $release['assets'] ) && is_array( $release['assets'] ) ) {
 			foreach ( $release['assets'] as $asset ) {
@@ -221,14 +273,15 @@ class PluginUpdater {
 		$tag     = $release['tag_name'] ?? '';
 		$version = ltrim( $tag, 'v' );
 
-		$info            = new \stdClass();
-		$info->name      = 'STR Direct Booking';
-		$info->slug      = $this->plugin_slug;
-		$info->version   = $version;
-		$info->author    = 'STR Direct Booking';
-		$info->homepage  = $release['html_url'] ?? '';
-		$info->requires  = '6.0';
-		$info->sections  = array(
+		$info               = new \stdClass();
+		$info->name         = 'STR Direct Booking';
+		$info->slug         = $this->plugin_slug;
+		$info->version      = $version;
+		$info->author       = 'STR Direct Booking';
+		$info->homepage     = $release['html_url'] ?? '';
+		$info->requires     = '6.0';
+		$info->download_link = $release['zipball_url'] ?? '';
+		$info->sections     = array(
 			'changelog' => $release['body'] ?? '',
 		);
 
@@ -261,6 +314,12 @@ class PluginUpdater {
 			return $source;
 		}
 
+		// Remove a stale corrected directory from a previous failed attempt so
+		// move() doesn't silently fail because the destination already exists.
+		if ( $wp_filesystem->exists( $corrected ) ) {
+			$wp_filesystem->delete( $corrected, true );
+		}
+
 		if ( $wp_filesystem->move( $source, $corrected ) ) {
 			return $corrected;
 		}
@@ -269,19 +328,37 @@ class PluginUpdater {
 	}
 
 	/**
-	 * Clear the cached release data after a plugin update completes.
+	 * Clear cached release data and the WordPress update transient after an update.
+	 *
+	 * Clearing update_plugins forces WordPress to re-read the newly-installed
+	 * plugin version from disk on the very next request, preventing a stale
+	 * "update available" entry from being shown immediately after the update.
 	 *
 	 * @param \WP_Upgrader $upgrader   Upgrader instance.
 	 * @param array        $hook_extra Hook extra data.
 	 */
 	public function clear_cache( \WP_Upgrader $upgrader, array $hook_extra ): void {
 		if (
-			isset( $hook_extra['action'], $hook_extra['type'] ) &&
-			'update' === $hook_extra['action'] &&
-			'plugin' === $hook_extra['type']
+			! isset( $hook_extra['action'], $hook_extra['type'] ) ||
+			'update' !== $hook_extra['action'] ||
+			'plugin' !== $hook_extra['type']
 		) {
-			delete_transient( $this->cache_key );
+			return;
 		}
+
+		// Only clear when this specific plugin was part of the update batch.
+		$updated_plugins = (array) ( $hook_extra['plugins'] ?? array() );
+		if ( ! empty( $updated_plugins ) && ! in_array( $this->plugin_basename, $updated_plugins, true ) ) {
+			return;
+		}
+
+		// Clear the GitHub API cache so the next check re-fetches.
+		delete_transient( $this->cache_key );
+
+		// Clear WordPress's own update transient so it re-reads the installed
+		// version from the plugin file on the next request instead of serving
+		// the stale comparison result that was computed pre-install.
+		delete_site_transient( 'update_plugins' );
 	}
 
 	/**
@@ -315,6 +392,7 @@ class PluginUpdater {
 		check_admin_referer( 'str_force_update_check' );
 
 		delete_transient( $this->cache_key );
+		delete_site_transient( 'update_plugins' );
 
 		$redirect = add_query_arg(
 			array(
