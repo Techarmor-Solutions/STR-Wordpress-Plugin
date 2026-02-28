@@ -583,7 +583,61 @@ class PublicAPI extends \WP_REST_Controller {
 			ARRAY_A
 		);
 
-		return rest_ensure_response( $rows );
+		// Build a keyed map so confirmed bookings can fill any gaps
+		$date_map = array();
+		foreach ( $rows as $row ) {
+			$date_map[ $row['date'] ] = $row;
+		}
+
+		// Merge confirmed booking posts — covers the case where mark_dates_booked()
+		// was never called (e.g. webhook not yet configured).
+		$confirmed_bookings = get_posts(
+			array(
+				'post_type'      => 'str_booking',
+				'post_status'    => array( 'confirmed', 'checked_in', 'checked_out' ),
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					array(
+						'key'     => 'str_property_id',
+						'value'   => $property_id,
+						'type'    => 'NUMERIC',
+						'compare' => '=',
+					),
+				),
+			)
+		);
+
+		foreach ( $confirmed_bookings as $bid ) {
+			$check_in  = get_post_meta( $bid, 'str_check_in', true );
+			$check_out = get_post_meta( $bid, 'str_check_out', true );
+
+			if ( ! $check_in || ! $check_out ) {
+				continue;
+			}
+
+			$current = new \DateTime( $check_in );
+			$end_dt  = new \DateTime( $check_out );
+
+			while ( $current < $end_dt ) {
+				$date_str = $current->format( 'Y-m-d' );
+
+				if ( $date_str >= $start && $date_str < $end ) {
+					if ( ! isset( $date_map[ $date_str ] ) || 'available' === $date_map[ $date_str ]['status'] ) {
+						$date_map[ $date_str ] = array(
+							'date'   => $date_str,
+							'status' => 'booked',
+						);
+					}
+				}
+
+				$current->modify( '+1 day' );
+			}
+		}
+
+		ksort( $date_map );
+
+		return rest_ensure_response( array_values( $date_map ) );
 	}
 
 	/**

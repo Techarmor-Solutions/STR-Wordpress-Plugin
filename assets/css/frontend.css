@@ -138,6 +138,20 @@
 }
 
 /* ── Availability Status ──────────────────────────────────────────────────── */
+.str-blocked-dates-notice {
+	background: #fff7ed;
+	border: 1px solid #fdba74;
+	border-radius: 6px;
+	padding: 10px 14px;
+	margin-bottom: 16px;
+	font-size: 13px;
+	color: #9a3412;
+}
+
+.str-blocked-dates-notice strong {
+	margin-right: 4px;
+}
+
 .str-availability-ok {
 	background: #dcfce7;
 	border: 1px solid #86efac;
