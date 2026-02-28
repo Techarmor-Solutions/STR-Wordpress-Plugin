@@ -166,6 +166,21 @@ class PublicAPI extends \WP_REST_Controller {
 			)
 		);
 
+		// POST /booking/{id}/finalize — client-side confirmation after stripe.confirmPayment
+		register_rest_route(
+			$this->namespace,
+			'/booking/(?P<id>[\d]+)/finalize',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'finalize_booking' ),
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'id'                 => array( 'required' => true, 'type' => 'integer', 'minimum' => 1 ),
+					'payment_intent_id'  => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
+				),
+			)
+		);
+
 		// GET /admin/availability-calendar (for admin calendar view)
 		register_rest_route(
 			$this->namespace,
@@ -438,6 +453,98 @@ class PublicAPI extends \WP_REST_Controller {
 	}
 
 	/**
+	 * POST /booking/{id}/finalize — verify payment with Stripe and confirm booking.
+	 *
+	 * Called from the frontend immediately after stripe.confirmPayment() succeeds so
+	 * booking status flips to confirmed without waiting for a webhook.  The webhook
+	 * handler acts as a backup; both paths are idempotent.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function finalize_booking( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		$booking_id = (int) $request->get_param( 'id' );
+		$pi_id      = sanitize_text_field( $request->get_param( 'payment_intent_id' ) );
+
+		$booking = $this->booking_manager->get_booking( $booking_id );
+		if ( is_wp_error( $booking ) ) {
+			return new \WP_Error( 'not_found', 'Booking not found.', array( 'status' => 404 ) );
+		}
+
+		// Already confirmed — idempotent, nothing to do
+		if ( 'confirmed' === get_post_status( $booking_id ) ) {
+			return rest_ensure_response( array( 'status' => 'confirmed', 'booking_id' => $booking_id ) );
+		}
+
+		// Retrieve and verify the PaymentIntent with Stripe
+		$secret_key = get_option( 'str_booking_stripe_secret_key', '' );
+		if ( empty( $secret_key ) ) {
+			return new \WP_Error( 'config_error', 'Stripe not configured.', array( 'status' => 500 ) );
+		}
+
+		\Stripe\Stripe::setApiKey( $secret_key );
+		\Stripe\Stripe::setAppInfo( 'STR Direct Booking', STR_BOOKING_VERSION, STR_BOOKING_PLUGIN_URL );
+
+		try {
+			$intent = \Stripe\PaymentIntent::retrieve( $pi_id );
+		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			return new \WP_Error( 'stripe_error', $e->getMessage(), array( 'status' => 400 ) );
+		}
+
+		// Make sure this PaymentIntent belongs to this booking
+		$meta_booking_id = (int) ( $intent->metadata->booking_id ?? 0 );
+		if ( $meta_booking_id !== $booking_id ) {
+			return new \WP_Error( 'mismatch', 'Payment intent does not match booking.', array( 'status' => 400 ) );
+		}
+
+		if ( 'succeeded' !== $intent->status ) {
+			return new \WP_Error( 'not_paid', 'Payment has not succeeded yet.', array( 'status' => 402 ) );
+		}
+
+		// Confirm the booking
+		$this->booking_manager->update_booking_status( $booking_id, 'confirmed' );
+
+		// Store charge ID
+		if ( ! empty( $intent->latest_charge ) ) {
+			update_post_meta( $booking_id, 'str_stripe_charge_id', $intent->latest_charge );
+		}
+
+		// Mark availability so calendar and availability checks reflect the booking
+		$this->booking_manager->mark_dates_booked(
+			$booking['property_id'],
+			$booking['check_in'],
+			$booking['check_out'],
+			$booking_id
+		);
+
+		// For multi-payment plans, persist Customer + PaymentMethod for future off-session charges
+		$payment_plan = get_post_meta( $booking_id, 'str_payment_plan', true );
+		if ( in_array( $payment_plan, array( 'two_payment', 'four_payment' ), true ) ) {
+			if ( ! empty( $intent->customer ) ) {
+				update_post_meta( $booking_id, 'str_stripe_customer_id', $intent->customer );
+			}
+			if ( ! empty( $intent->payment_method ) ) {
+				update_post_meta( $booking_id, 'str_stripe_payment_method_id', $intent->payment_method );
+			}
+		}
+
+		// Schedule co-host transfers 24 hours after check-in
+		$checkin_ts     = strtotime( $booking['check_in'] ) + DAY_IN_SECONDS;
+		$transfer_group = get_post_meta( $booking_id, 'str_stripe_transfer_group', true );
+		if ( $transfer_group ) {
+			wp_schedule_single_event(
+				$checkin_ts,
+				'str_booking_process_transfers',
+				array( $booking_id, $transfer_group )
+			);
+		}
+
+		do_action( 'str_booking_confirmed', $booking_id );
+
+		return rest_ensure_response( array( 'status' => 'confirmed', 'booking_id' => $booking_id ) );
+	}
+
+	/**
 	 * GET /admin/metrics
 	 *
 	 * @param \WP_REST_Request $request
@@ -482,6 +589,10 @@ class PublicAPI extends \WP_REST_Controller {
 	/**
 	 * GET /admin/availability/{property_id}
 	 *
+	 * Merges the availability table (iCal blocks, manual overrides) with confirmed
+	 * booking posts so the calendar always reflects real bookings, even when
+	 * mark_dates_booked() was never called (e.g. webhook not yet configured).
+	 *
 	 * @param \WP_REST_Request $request
 	 * @return \WP_REST_Response
 	 */
@@ -508,7 +619,65 @@ class PublicAPI extends \WP_REST_Controller {
 			ARRAY_A
 		);
 
-		return rest_ensure_response( $rows );
+		// Build a keyed map for O(1) lookup and easy overriding
+		$date_map = array();
+		foreach ( $rows as $row ) {
+			$date_map[ $row['date'] ] = $row;
+		}
+
+		// Also query confirmed bookings directly — covers the case where
+		// mark_dates_booked() wasn't called (e.g. webhook not configured yet).
+		// We don't override 'blocked' rows (those come from iCal imports).
+		$confirmed_bookings = get_posts(
+			array(
+				'post_type'      => 'str_booking',
+				'post_status'    => array( 'confirmed', 'checked_in', 'checked_out' ),
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					array(
+						'key'     => 'str_property_id',
+						'value'   => $property_id,
+						'type'    => 'NUMERIC',
+						'compare' => '=',
+					),
+				),
+			)
+		);
+
+		foreach ( $confirmed_bookings as $bid ) {
+			$check_in  = get_post_meta( $bid, 'str_check_in', true );
+			$check_out = get_post_meta( $bid, 'str_check_out', true );
+
+			if ( ! $check_in || ! $check_out ) {
+				continue;
+			}
+
+			$current = new \DateTime( $check_in );
+			$end_dt  = new \DateTime( $check_out );
+
+			while ( $current < $end_dt ) {
+				$date_str = $current->format( 'Y-m-d' );
+
+				if ( $date_str >= $start && $date_str < $end ) {
+					// Only fill in dates not already marked as 'blocked' (iCal)
+					if ( ! isset( $date_map[ $date_str ] ) || 'available' === $date_map[ $date_str ]['status'] ) {
+						$date_map[ $date_str ] = array(
+							'date'           => $date_str,
+							'status'         => 'booked',
+							'price_override' => null,
+							'booking_id'     => $bid,
+						);
+					}
+				}
+
+				$current->modify( '+1 day' );
+			}
+		}
+
+		ksort( $date_map );
+
+		return rest_ensure_response( array_values( $date_map ) );
 	}
 
 	/**

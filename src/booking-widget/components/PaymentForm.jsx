@@ -221,7 +221,7 @@ function StripePaymentInner( {
 
 		setIsProcessing( true );
 
-		const { error } = await stripe.confirmPayment( {
+		const { paymentIntent, error } = await stripe.confirmPayment( {
 			elements,
 			confirmParams: {
 				return_url: window.location.href,
@@ -240,6 +240,20 @@ function StripePaymentInner( {
 			onError( error.message );
 			setIsProcessing( false );
 			return;
+		}
+
+		// Immediately confirm on the backend — don't wait for the webhook.
+		// The webhook remains as a backup; both paths are idempotent.
+		if ( paymentIntent?.id && bookingId ) {
+			try {
+				await apiFetch( {
+					url:    `${ apiUrl }/booking/${ bookingId }/finalize`,
+					method: 'POST',
+					data:   { payment_intent_id: paymentIntent.id },
+				} );
+			} catch {
+				// Non-fatal — the webhook will confirm as a fallback.
+			}
 		}
 
 		setPaymentConfirmed( true );
