@@ -42,6 +42,7 @@ register_activation_hook(
 register_deactivation_hook(
 	__FILE__,
 	function () {
+
 		STRBooking::deactivate();
 	}
 );

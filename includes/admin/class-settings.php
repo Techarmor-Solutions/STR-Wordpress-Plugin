@@ -31,28 +31,20 @@ class Settings {
 		$this->register_gateway_settings();
 
 		// ── Stripe Settings ──────────────────────────────────────────────────
-		add_settings_section(
-			'str_booking_stripe',
-			__( 'Stripe Settings', 'str-direct-booking' ),
-			function () {
-				echo '<div id="str-stripe-section">';
-				echo '<p>' . esc_html__( 'Configure your Stripe integration.', 'str-direct-booking' ) . '</p>';
-			},
-			'str-booking-settings'
-		);
-
+		// Fields are registered for saving but rendered inline in the section
+		// callback so the wrapping <div> properly contains the <table>.
 		$stripe_fields = array(
-			'str_booking_stripe_publishable_key' => array(
+			'str_booking_stripe_publishable_key'   => array(
 				'label'       => __( 'Publishable Key', 'str-direct-booking' ),
 				'type'        => 'text',
 				'description' => __( 'Your Stripe publishable key (pk_live_... or pk_test_...)', 'str-direct-booking' ),
 			),
-			'str_booking_stripe_secret_key'      => array(
+			'str_booking_stripe_secret_key'        => array(
 				'label'       => __( 'Secret Key', 'str-direct-booking' ),
 				'type'        => 'password',
 				'description' => __( 'Your Stripe secret key. Never share this.', 'str-direct-booking' ),
 			),
-			'str_booking_stripe_webhook_secret'  => array(
+			'str_booking_stripe_webhook_secret'    => array(
 				'label'       => __( 'Webhook Secret', 'str-direct-booking' ),
 				'type'        => 'password',
 				'description' => __( 'The signing secret from your Stripe webhook endpoint.', 'str-direct-booking' ),
@@ -66,42 +58,24 @@ class Settings {
 
 		foreach ( $stripe_fields as $option_name => $field ) {
 			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => 'sanitize_text_field' ) );
-			add_settings_field(
-				$option_name,
-				$field['label'],
-				array( $this, 'render_field' ),
-				'str-booking-settings',
-				'str_booking_stripe',
-				array(
-					'option_name' => $option_name,
-					'type'        => $field['type'],
-					'description' => $field['description'],
-				)
-			);
 		}
 
-		// Stripe section closing div — rendered via a dummy field with no label
-		add_settings_field(
-			'str_booking_stripe_section_end',
-			'',
-			function () {
-				echo '</div><!-- #str-stripe-section -->';
-			},
-			'str-booking-settings',
-			'str_booking_stripe'
-		);
-
-		// ── Square Settings ───────────────────────────────────────────────────
+		// Empty title — we render the <h2> manually inside the div so JS can
+		// show/hide the heading together with the fields.
 		add_settings_section(
-			'str_booking_square_creds',
-			__( 'Square Settings', 'str-direct-booking' ),
-			function () {
-				echo '<div id="str-square-section">';
-				echo '<p>' . esc_html__( 'Configure your Square integration.', 'str-direct-booking' ) . '</p>';
+			'str_booking_stripe',
+			'',
+			function () use ( $stripe_fields ) {
+				echo '<div id="str-stripe-section">';
+				echo '<h2>' . esc_html__( 'Stripe Settings', 'str-direct-booking' ) . '</h2>';
+				echo '<p>' . esc_html__( 'Configure your Stripe integration.', 'str-direct-booking' ) . '</p>';
+				$this->render_fields_table( $stripe_fields );
+				echo '</div>';
 			},
 			'str-booking-settings'
 		);
 
+		// ── Square Settings ───────────────────────────────────────────────────
 		$square_fields = array(
 			'str_booking_square_application_id' => array(
 				'label'       => __( 'Application ID', 'str-direct-booking' ),
@@ -122,21 +96,8 @@ class Settings {
 
 		foreach ( $square_fields as $option_name => $field ) {
 			register_setting( 'str_booking_settings', $option_name, array( 'sanitize_callback' => 'sanitize_text_field' ) );
-			add_settings_field(
-				$option_name,
-				$field['label'],
-				array( $this, 'render_field' ),
-				'str-booking-settings',
-				'str_booking_square_creds',
-				array(
-					'option_name' => $option_name,
-					'type'        => $field['type'],
-					'description' => $field['description'],
-				)
-			);
 		}
 
-		// Square environment select
 		register_setting(
 			'str_booking_settings',
 			'str_booking_square_environment',
@@ -148,23 +109,31 @@ class Settings {
 			)
 		);
 
-		add_settings_field(
-			'str_booking_square_environment',
-			__( 'Environment', 'str-direct-booking' ),
-			array( $this, 'render_square_environment_field' ),
-			'str-booking-settings',
-			'str_booking_square_creds'
-		);
-
-		// Square section closing div
-		add_settings_field(
-			'str_booking_square_section_end',
+		add_settings_section(
+			'str_booking_square_creds',
 			'',
-			function () {
-				echo '</div><!-- #str-square-section -->';
+			function () use ( $square_fields ) {
+				echo '<div id="str-square-section">';
+				echo '<h2>' . esc_html__( 'Square Settings', 'str-direct-booking' ) . '</h2>';
+				echo '<p>' . esc_html__( 'Configure your Square integration.', 'str-direct-booking' ) . '</p>';
+				$this->render_fields_table( $square_fields );
+				// Environment select
+				$env = get_option( 'str_booking_square_environment', 'sandbox' );
+				echo '<table class="form-table" role="presentation"><tbody>';
+				echo '<tr>';
+				printf( '<th scope="row"><label for="str_booking_square_environment">%s</label></th>', esc_html__( 'Environment', 'str-direct-booking' ) );
+				echo '<td>';
+				echo '<select id="str_booking_square_environment" name="str_booking_square_environment">';
+				printf( '<option value="sandbox"%s>%s</option>', selected( $env, 'sandbox', false ), esc_html__( 'Sandbox (testing)', 'str-direct-booking' ) );
+				printf( '<option value="production"%s>%s</option>', selected( $env, 'production', false ), esc_html__( 'Production (live)', 'str-direct-booking' ) );
+				echo '</select>';
+				echo '<p class="description">' . esc_html__( 'Use Sandbox for testing. Switch to Production when ready to accept real payments.', 'str-direct-booking' ) . '</p>';
+				echo '</td>';
+				echo '</tr>';
+				echo '</tbody></table>';
+				echo '</div>';
 			},
-			'str-booking-settings',
-			'str_booking_square_creds'
+			'str-booking-settings'
 		);
 
 		// ── Taxes & Currency ─────────────────────────────────────────────────
@@ -528,17 +497,37 @@ class Settings {
 	}
 
 	/**
-	 * Render Square environment select field.
+	 * Render a complete form-table for an array of fields.
+	 * Used by gateway section callbacks to keep the wrapping div valid.
+	 *
+	 * @param array $fields Keyed by option_name; each has 'label', 'type', 'description'.
 	 */
-	public function render_square_environment_field(): void {
-		$current = get_option( 'str_booking_square_environment', 'sandbox' );
-		?>
-		<select id="str_booking_square_environment" name="str_booking_square_environment">
-			<option value="sandbox" <?php selected( $current, 'sandbox' ); ?>><?php esc_html_e( 'Sandbox (testing)', 'str-direct-booking' ); ?></option>
-			<option value="production" <?php selected( $current, 'production' ); ?>><?php esc_html_e( 'Production (live)', 'str-direct-booking' ); ?></option>
-		</select>
-		<p class="description"><?php esc_html_e( 'Use Sandbox for testing. Switch to Production when ready to accept real payments.', 'str-direct-booking' ); ?></p>
-		<?php
+	private function render_fields_table( array $fields ): void {
+		echo '<table class="form-table" role="presentation"><tbody>';
+		foreach ( $fields as $option_name => $field ) {
+			$type  = $field['type'] ?? 'text';
+			$value = get_option( $option_name, '' );
+			echo '<tr>';
+			printf(
+				'<th scope="row"><label for="%s">%s</label></th>',
+				esc_attr( $option_name ),
+				esc_html( $field['label'] )
+			);
+			echo '<td>';
+			printf(
+				'<input type="%s" id="%s" name="%s" value="%s" class="regular-text" />',
+				esc_attr( $type ),
+				esc_attr( $option_name ),
+				esc_attr( $option_name ),
+				'password' === $type ? '' : esc_attr( $value )
+			);
+			if ( ! empty( $field['description'] ) ) {
+				printf( '<p class="description">%s</p>', esc_html( $field['description'] ) );
+			}
+			echo '</td>';
+			echo '</tr>';
+		}
+		echo '</tbody></table>';
 	}
 
 	/**
