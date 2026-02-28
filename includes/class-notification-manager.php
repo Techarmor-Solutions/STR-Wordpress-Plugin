@@ -7,6 +7,8 @@
 
 namespace STRBooking;
 
+use STRBooking\Admin\NotificationSettings;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -84,6 +86,8 @@ class NotificationManager {
 		add_action( 'str_booking_confirmed', array( $this, 'send_confirmation' ), 10 );
 		add_action( 'str_booking_confirmed', array( $this, 'schedule_notification_sequence' ), 20 );
 		add_action( 'str_send_notification', array( $this, 'dispatch_notification' ), 10, 2 );
+		add_action( 'str_installment_paid', array( $this, 'send_payment_received' ), 10, 3 );
+		add_action( 'str_installment_failed', array( $this, 'handle_installment_failed' ), 10, 3 );
 	}
 
 	/**
@@ -123,19 +127,23 @@ class NotificationManager {
 		$check_in_ts  = strtotime( $booking['check_in'] . ' ' . ( $booking['check_in_time'] ?: '15:00' ) );
 		$check_out_ts = strtotime( $booking['check_out'] . ' ' . ( $booking['check_out_time'] ?: '11:00' ) );
 
+		// Load timing from saved templates
+		$pre_arrival_days    = (int) ( NotificationSettings::get_template( 'pre_arrival' )['days_before'] ?? 3 );
+		$checkout_reminder_days = (int) ( NotificationSettings::get_template( 'check_out_reminder' )['days_before'] ?? 1 );
+		$review_days         = (int) ( NotificationSettings::get_template( 'review_request' )['days_before'] ?? 2 );
+		$booking_reminder_days = (int) ( NotificationSettings::get_template( 'booking_reminder' )['days_before'] ?? 7 );
+
 		$schedule = array(
-			// 3 days before check-in
-			'pre_arrival'          => $check_in_ts - ( 3 * DAY_IN_SECONDS ),
-			// Check-in day at 9am
+			'booking_reminder'      => $check_in_ts - ( $booking_reminder_days * DAY_IN_SECONDS ),
+			'pre_arrival'           => $check_in_ts - ( $pre_arrival_days * DAY_IN_SECONDS ),
 			'check_in_instructions' => strtotime( $booking['check_in'] . ' 09:00:00' ),
-			// Day before check-out at 6pm
-			'check_out_reminder'   => $check_out_ts - ( 18 * HOUR_IN_SECONDS ),
-			// 2 days after check-out
-			'review_request'       => $check_out_ts + ( 2 * DAY_IN_SECONDS ),
+			'check_out_reminder'    => $check_out_ts - ( $checkout_reminder_days * DAY_IN_SECONDS ),
+			'review_request'        => $check_out_ts + ( $review_days * DAY_IN_SECONDS ),
 		);
 
 		foreach ( $schedule as $type => $timestamp ) {
-			if ( $timestamp > time() ) {
+			$tmpl = NotificationSettings::get_template( $type );
+			if ( ! empty( $tmpl['enabled'] ) && $timestamp > time() ) {
 				wp_schedule_single_event(
 					$timestamp,
 					'str_send_notification',
@@ -143,13 +151,84 @@ class NotificationManager {
 				);
 			}
 		}
+
+		// Schedule payment reminders for multi-payment plan bookings
+		$payment_plan = get_post_meta( $booking_id, 'str_payment_plan', true );
+		if ( in_array( $payment_plan, array( 'two_payment', 'four_payment' ), true ) ) {
+			$this->schedule_payment_reminders( $booking_id );
+		}
+	}
+
+	/**
+	 * Schedule payment reminder notifications for each pending installment.
+	 *
+	 * @param int $booking_id Booking post ID.
+	 */
+	private function schedule_payment_reminders( int $booking_id ): void {
+		$plan_manager = new PaymentPlanManager();
+		$installments = $plan_manager->get_schedule( $booking_id );
+		$reminder_tmpl = NotificationSettings::get_template( 'payment_reminder' );
+
+		if ( empty( $reminder_tmpl['enabled'] ) ) {
+			return;
+		}
+
+		$days_before = (int) ( $reminder_tmpl['days_before'] ?? 3 );
+
+		foreach ( $installments as $inst ) {
+			if ( 'pending' !== $inst['status'] || empty( $inst['due_date'] ) ) {
+				continue;
+			}
+
+			$due_ts      = strtotime( $inst['due_date'] );
+			$reminder_ts = $due_ts - ( $days_before * DAY_IN_SECONDS );
+
+			if ( $reminder_ts > time() ) {
+				wp_schedule_single_event(
+					$reminder_ts,
+					'str_send_notification',
+					array( $booking_id, 'payment_reminder_' . $inst['number'] )
+				);
+			}
+		}
+	}
+
+	/**
+	 * Send a payment_received notification immediately after an installment is charged.
+	 *
+	 * @param int    $booking_id          Booking post ID.
+	 * @param int    $installment_number  Installment number.
+	 * @param float  $amount              Amount charged.
+	 */
+	public function send_payment_received( int $booking_id, int $installment_number, float $amount ): void {
+		$booking = $this->get_booking_data( $booking_id );
+
+		if ( ! $booking ) {
+			return;
+		}
+
+		$booking['installment_number'] = $installment_number;
+		$booking['installment_amount'] = $amount;
+
+		$this->send_email_notification( $booking, 'payment_received' );
+	}
+
+	/**
+	 * Handle a failed installment charge.
+	 *
+	 * @param int    $booking_id         Booking post ID.
+	 * @param int    $installment_number Installment number.
+	 * @param string $error_message      Stripe error message.
+	 */
+	public function handle_installment_failed( int $booking_id, int $installment_number, string $error_message ): void {
+		error_log( sprintf( 'STR Booking: Installment #%d failed for booking %d: %s', $installment_number, $booking_id, $error_message ) );
 	}
 
 	/**
 	 * Dispatch a scheduled or immediate notification.
 	 *
-	 * @param int    $booking_id       Booking post ID.
-	 * @param string $notification_type Notification type slug.
+	 * @param int    $booking_id        Booking post ID.
+	 * @param string $notification_type Notification type slug (may include installment number suffix).
 	 */
 	public function dispatch_notification( int $booking_id, string $notification_type ): void {
 		$booking = $this->get_booking_data( $booking_id );
@@ -158,14 +237,39 @@ class NotificationManager {
 			return;
 		}
 
-		$channels = $this->get_channels_for_type( $notification_type );
+		// Handle payment_reminder_{n} types — extract installment data
+		$base_type = $notification_type;
+		if ( str_starts_with( $notification_type, 'payment_reminder_' ) ) {
+			$installment_number = (int) substr( $notification_type, strlen( 'payment_reminder_' ) );
+			$plan_manager       = new PaymentPlanManager();
+			$schedule           = $plan_manager->get_schedule( $booking_id );
+
+			foreach ( $schedule as $inst ) {
+				if ( (int) $inst['number'] === $installment_number ) {
+					$booking['installment_number'] = $inst['number'];
+					$booking['installment_amount'] = $inst['amount'];
+					$booking['installment_due_date'] = $inst['due_date'];
+					break;
+				}
+			}
+
+			$base_type = 'payment_reminder';
+		}
+
+		// Check if the template is enabled
+		$tmpl = NotificationSettings::get_template( $base_type );
+		if ( isset( $tmpl['enabled'] ) && ! $tmpl['enabled'] ) {
+			return;
+		}
+
+		$channels = $this->get_channels_for_type( $base_type );
 
 		if ( in_array( 'email', $channels, true ) ) {
-			$this->send_email_notification( $booking, $notification_type );
+			$this->send_email_notification( $booking, $base_type );
 		}
 
 		if ( in_array( 'sms', $channels, true ) && $this->sms_provider && ! empty( $booking['guest_phone'] ) ) {
-			$this->send_sms_notification( $booking, $notification_type );
+			$this->send_sms_notification( $booking, $base_type );
 		}
 	}
 
@@ -176,41 +280,37 @@ class NotificationManager {
 	 * @return string[]
 	 */
 	private function get_channels_for_type( string $type ): array {
-		$map = array(
-			'booking_confirmation'   => array( 'email', 'sms' ),
-			'pre_arrival'            => array( 'email', 'sms' ),
-			'check_in_instructions'  => array( 'sms' ),
-			'check_out_reminder'     => array( 'email', 'sms' ),
-			'review_request'         => array( 'email' ),
-		);
+		$types = NotificationSettings::get_notification_types();
 
-		return $map[ $type ] ?? array( 'email' );
+		if ( isset( $types[ $type ]['channels'] ) ) {
+			return $types[ $type ]['channels'];
+		}
+
+		return array( 'email' );
 	}
 
 	/**
-	 * Send email notification.
+	 * Send email notification using the customizable template from WP options.
+	 *
+	 * Falls back to a template file if available, then to inline defaults.
 	 *
 	 * @param array  $booking Booking data array.
 	 * @param string $type    Notification type.
 	 */
 	private function send_email_notification( array $booking, string $type ): void {
-		$template_file = $this->get_template_path( $type . '.php' );
+		$tmpl   = NotificationSettings::get_template( $type );
+		$subject = $this->replace_template_vars( $tmpl['email_subject'] ?? '', $booking );
+		$body    = $this->replace_template_vars( $tmpl['email_body'] ?? '', $booking );
 
-		if ( ! $template_file ) {
+		if ( empty( $subject ) || empty( $body ) ) {
 			return;
 		}
 
-		$body = $this->render_template( $template_file, $booking );
+		// Convert plain-text newlines to <br> if body looks like plain text
+		if ( false === strpos( $body, '<' ) ) {
+			$body = nl2br( esc_html( $body ) );
+		}
 
-		$subject_map = array(
-			'booking_confirmation'   => __( 'Your booking is confirmed!', 'str-direct-booking' ),
-			'pre_arrival'            => __( 'Your stay is coming up — here\'s what to know', 'str-direct-booking' ),
-			'check_in_instructions'  => __( 'Check-in instructions for today', 'str-direct-booking' ),
-			'check_out_reminder'     => __( 'Check-out reminder', 'str-direct-booking' ),
-			'review_request'         => __( 'How was your stay?', 'str-direct-booking' ),
-		);
-
-		$subject   = $subject_map[ $type ] ?? __( 'Booking update', 'str-direct-booking' );
 		$from_name  = get_option( 'str_booking_from_name', get_bloginfo( 'name' ) );
 		$from_email = get_option( 'str_booking_from_email', get_option( 'admin_email' ) );
 
@@ -223,27 +323,20 @@ class NotificationManager {
 	}
 
 	/**
-	 * Send SMS notification.
+	 * Send SMS notification using the customizable template from WP options.
 	 *
 	 * @param array  $booking Booking data array.
 	 * @param string $type    Notification type.
 	 */
 	private function send_sms_notification( array $booking, string $type ): void {
-		$messages = array(
-			'booking_confirmation'   => "Hi {guest_name}, your booking at {property_name} is confirmed! Check-in: {check_in_date}. Reply STOP to unsubscribe.",
-			'pre_arrival'            => "Hi {guest_name}, your stay at {property_name} starts {check_in_date}. We'll send check-in details the morning of arrival!",
-			'check_in_instructions'  => "Welcome to {property_name}! Door code: {door_code}. WiFi: {wifi_password}. Questions? Call {host_phone}",
-			'check_out_reminder'     => "Hi {guest_name}, just a reminder that check-out is tomorrow at {check_out_time}. Thanks for staying!",
-			'review_request'         => null, // SMS not used for review request
-		);
+		$tmpl = NotificationSettings::get_template( $type );
+		$body = trim( $tmpl['sms_body'] ?? '' );
 
-		$message_template = $messages[ $type ] ?? null;
-
-		if ( ! $message_template ) {
+		if ( empty( $body ) ) {
 			return;
 		}
 
-		$message = $this->replace_template_vars( $message_template, $booking );
+		$message = $this->replace_template_vars( $body, $booking );
 		$this->sms_provider->send( $booking['guest_phone'], $message );
 	}
 
@@ -274,21 +367,42 @@ class NotificationManager {
 	private function replace_template_vars( string $template, array $booking ): string {
 		$property_id = $booking['property_id'];
 
+		$payment_plan_labels = array(
+			'pay_in_full'  => __( 'Pay in Full', 'str-direct-booking' ),
+			'two_payment'  => __( '2-Payment Plan', 'str-direct-booking' ),
+			'four_payment' => __( '4-Payment Plan', 'str-direct-booking' ),
+		);
+		$payment_plan = get_post_meta( $booking['id'], 'str_payment_plan', true ) ?: 'pay_in_full';
+
+		$installment_amount   = isset( $booking['installment_amount'] )
+			? number_format_i18n( (float) $booking['installment_amount'], 2 )
+			: '';
+		$installment_due_date = isset( $booking['installment_due_date'] )
+			? date_i18n( get_option( 'date_format' ), strtotime( $booking['installment_due_date'] ) )
+			: '';
+		$installment_number   = isset( $booking['installment_number'] )
+			? (int) $booking['installment_number']
+			: '';
+
 		$replacements = array(
-			'{guest_name}'      => esc_html( $booking['guest_name'] ),
-			'{guest_email}'     => esc_html( $booking['guest_email'] ),
-			'{property_name}'   => esc_html( get_the_title( $property_id ) ),
-			'{check_in_date}'   => esc_html( date_i18n( get_option( 'date_format' ), strtotime( $booking['check_in'] ) ) ),
-			'{check_out_date}'  => esc_html( date_i18n( get_option( 'date_format' ), strtotime( $booking['check_out'] ) ) ),
-			'{check_in_time}'   => esc_html( get_post_meta( $property_id, 'str_check_in_time', true ) ?: '3:00 PM' ),
-			'{check_out_time}'  => esc_html( get_post_meta( $property_id, 'str_check_out_time', true ) ?: '11:00 AM' ),
-			'{door_code}'       => esc_html( get_post_meta( $property_id, 'str_door_code', true ) ),
-			'{wifi_password}'   => esc_html( get_post_meta( $property_id, 'str_wifi_password', true ) ),
-			'{host_phone}'      => esc_html( get_post_meta( $property_id, 'str_host_phone', true ) ),
-			'{address}'         => esc_html( get_post_meta( $property_id, 'str_address', true ) ),
-			'{total}'           => number_format_i18n( $booking['total'], 2 ),
-			'{nights}'          => (int) $booking['nights'],
-			'{booking_id}'      => $booking['id'],
+			'{guest_name}'           => esc_html( $booking['guest_name'] ),
+			'{guest_email}'          => esc_html( $booking['guest_email'] ),
+			'{property_name}'        => esc_html( get_the_title( $property_id ) ),
+			'{check_in_date}'        => esc_html( date_i18n( get_option( 'date_format' ), strtotime( $booking['check_in'] ) ) ),
+			'{check_out_date}'       => esc_html( date_i18n( get_option( 'date_format' ), strtotime( $booking['check_out'] ) ) ),
+			'{check_in_time}'        => esc_html( get_post_meta( $property_id, 'str_check_in_time', true ) ?: '3:00 PM' ),
+			'{check_out_time}'       => esc_html( get_post_meta( $property_id, 'str_check_out_time', true ) ?: '11:00 AM' ),
+			'{door_code}'            => esc_html( get_post_meta( $property_id, 'str_door_code', true ) ),
+			'{wifi_password}'        => esc_html( get_post_meta( $property_id, 'str_wifi_password', true ) ),
+			'{host_phone}'           => esc_html( get_post_meta( $property_id, 'str_host_phone', true ) ),
+			'{address}'              => esc_html( get_post_meta( $property_id, 'str_address', true ) ),
+			'{total}'                => number_format_i18n( $booking['total'], 2 ),
+			'{nights}'               => (int) $booking['nights'],
+			'{booking_id}'           => $booking['id'],
+			'{installment_amount}'   => $installment_amount,
+			'{installment_due_date}' => esc_html( $installment_due_date ),
+			'{installment_number}'   => $installment_number,
+			'{payment_plan_type}'    => esc_html( $payment_plan_labels[ $payment_plan ] ?? $payment_plan ),
 		);
 
 		return str_replace( array_keys( $replacements ), array_values( $replacements ), $template );

@@ -9,12 +9,14 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import DatePicker from './DatePicker';
 import GuestForm from './GuestForm';
+import PaymentPlanSelector from './PaymentPlanSelector';
 import PaymentForm from './PaymentForm';
 import Confirmation from './Confirmation';
 
 const STEPS = {
 	DATES: 'DATES',
 	GUEST_DETAILS: 'GUEST_DETAILS',
+	PLAN_SELECTION: 'PLAN_SELECTION',
 	PAYMENT: 'PAYMENT',
 	CONFIRMATION: 'CONFIRMATION',
 };
@@ -28,8 +30,45 @@ export default function BookingWidget( { propertyId } ) {
 	const [ dates, setDates ] = useState( { checkIn: null, checkOut: null } );
 	const [ pricing, setPricing ] = useState( null );
 	const [ guestDetails, setGuestDetails ] = useState( {} );
+	const [ paymentPlan, setPaymentPlan ] = useState( null );
 	const [ bookingResult, setBookingResult ] = useState( null );
 	const [ error, setError ] = useState( null );
+
+	// Plan config is localized via strBookingProperty (set per-shortcode)
+	const planConfig = window.strBookingProperty?.planConfig || {};
+
+	// Compute eligible plans based on selected check-in date and per-property plan config
+	function getEligiblePlans( checkin ) {
+		const plans = [];
+
+		// Pay-in-full: enabled by default unless explicitly disabled
+		if ( planConfig.full_enabled !== false ) {
+			plans.push( 'pay_in_full' );
+		}
+
+		if ( ! checkin ) return plans;
+
+		const checkinTs  = new Date( checkin + 'T00:00:00' ).getTime();
+		const nowTs      = Date.now();
+		const daysUntil  = Math.floor( ( checkinTs - nowTs ) / 86400000 );
+
+		// 2-payment: show only if check-in is more than two_days_before away
+		if ( planConfig.two_enabled && daysUntil > ( planConfig.two_days_before || 42 ) ) {
+			plans.push( 'two_payment' );
+		}
+
+		// 4-payment: show only if check-in is more than 90 days away
+		if ( planConfig.four_enabled && daysUntil > 90 ) {
+			plans.push( 'four_payment' );
+		}
+
+		return plans;
+	}
+
+	const eligiblePlans = getEligiblePlans( dates.checkIn );
+
+	// Skip plan selection step if only pay_in_full is available
+	const hasPlanChoice = eligiblePlans.length > 1;
 
 	function handleDatesSelected( checkIn, checkOut, pricingData ) {
 		setDates( { checkIn, checkOut } );
@@ -40,6 +79,17 @@ export default function BookingWidget( { propertyId } ) {
 
 	function handleGuestDetailsSubmit( details ) {
 		setGuestDetails( details );
+		setError( null );
+		if ( hasPlanChoice ) {
+			setStep( STEPS.PLAN_SELECTION );
+		} else {
+			setPaymentPlan( { plan: 'pay_in_full', depositAmount: pricing?.total, schedule: null } );
+			setStep( STEPS.PAYMENT );
+		}
+	}
+
+	function handlePlanSelected( planData ) {
+		setPaymentPlan( planData );
 		setStep( STEPS.PAYMENT );
 		setError( null );
 	}
@@ -53,26 +103,34 @@ export default function BookingWidget( { propertyId } ) {
 		setError( null );
 		if ( step === STEPS.GUEST_DETAILS ) {
 			setStep( STEPS.DATES );
-		} else if ( step === STEPS.PAYMENT ) {
+		} else if ( step === STEPS.PLAN_SELECTION ) {
 			setStep( STEPS.GUEST_DETAILS );
+		} else if ( step === STEPS.PAYMENT ) {
+			setStep( hasPlanChoice ? STEPS.PLAN_SELECTION : STEPS.GUEST_DETAILS );
 		}
 	}
 
 	const stepLabels = {
 		[ STEPS.DATES ]: '1. Select Dates',
 		[ STEPS.GUEST_DETAILS ]: '2. Your Details',
-		[ STEPS.PAYMENT ]: '3. Payment',
+		[ STEPS.PLAN_SELECTION ]: '3. Payment Plan',
+		[ STEPS.PAYMENT ]: hasPlanChoice ? '4. Payment' : '3. Payment',
 		[ STEPS.CONFIRMATION ]: 'Confirmed!',
 	};
+
+	// Only show steps that are relevant in the nav
+	const visibleSteps = hasPlanChoice
+		? Object.values( STEPS )
+		: Object.values( STEPS ).filter( ( s ) => s !== STEPS.PLAN_SELECTION );
 
 	return (
 		<div className="str-booking-widget">
 			{ step !== STEPS.CONFIRMATION && (
 				<nav className="str-steps">
-					{ Object.values( STEPS ).map( ( s ) => (
+					{ visibleSteps.map( ( s ) => (
 						<span
 							key={ s }
-							className={ `str-step ${ step === s ? 'is-active' : '' } ${ isStepComplete( s, step ) ? 'is-complete' : '' }` }
+							className={ `str-step ${ step === s ? 'is-active' : '' } ${ isStepComplete( s, step, visibleSteps ) ? 'is-complete' : '' }` }
 						>
 							{ stepLabels[ s ] }
 						</span>
@@ -103,6 +161,18 @@ export default function BookingWidget( { propertyId } ) {
 				/>
 			) }
 
+			{ step === STEPS.PLAN_SELECTION && (
+				<PaymentPlanSelector
+					propertyId={ propertyId }
+					pricing={ pricing }
+					checkin={ dates.checkIn }
+					eligiblePlans={ eligiblePlans }
+					planConfig={ planConfig }
+					onSelect={ handlePlanSelected }
+					onBack={ handleBack }
+				/>
+			) }
+
 			{ step === STEPS.PAYMENT && (
 				<Elements stripe={ stripePromise }>
 					<PaymentForm
@@ -110,6 +180,7 @@ export default function BookingWidget( { propertyId } ) {
 						dates={ dates }
 						pricing={ pricing }
 						guestDetails={ guestDetails }
+						paymentPlan={ paymentPlan }
 						onSuccess={ handlePaymentSuccess }
 						onBack={ handleBack }
 						onError={ setError }
@@ -129,7 +200,6 @@ export default function BookingWidget( { propertyId } ) {
 	);
 }
 
-function isStepComplete( step, currentStep ) {
-	const order = Object.values( STEPS );
-	return order.indexOf( step ) < order.indexOf( currentStep );
+function isStepComplete( step, currentStep, visibleSteps ) {
+	return visibleSteps.indexOf( step ) < visibleSteps.indexOf( currentStep );
 }

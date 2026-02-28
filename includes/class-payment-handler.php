@@ -53,29 +53,35 @@ class PaymentHandler {
 	/**
 	 * Create a Stripe PaymentIntent for a booking.
 	 *
-	 * @param float  $total          Total amount in dollars.
-	 * @param string $transfer_group Transfer group identifier.
-	 * @param int    $property_id    Property ID for metadata.
+	 * @param float       $total          Total amount in dollars.
+	 * @param string      $transfer_group Transfer group identifier.
+	 * @param int         $property_id    Property ID for metadata.
+	 * @param string|null $customer_id    Optional Stripe Customer ID to vault payment method for future use.
 	 * @return array|\WP_Error PaymentIntent data or WP_Error.
 	 */
-	public function create_payment_intent( float $total, string $transfer_group, int $property_id ): array|\WP_Error {
+	public function create_payment_intent( float $total, string $transfer_group, int $property_id, ?string $customer_id = null ): array|\WP_Error {
 		$this->init_stripe();
 
 		$currency = get_option( 'str_booking_currency', 'usd' );
 
+		$args = array(
+			'amount'         => (int) round( $total * 100 ), // Convert to cents
+			'currency'       => strtolower( $currency ),
+			'transfer_group' => $transfer_group,
+			'metadata'       => array(
+				'property_id' => $property_id,
+				'source'      => 'str_direct_booking',
+			),
+			'automatic_payment_methods' => array( 'enabled' => true ),
+		);
+
+		if ( $customer_id ) {
+			$args['customer']           = $customer_id;
+			$args['setup_future_usage'] = 'off_session';
+		}
+
 		try {
-			$intent = \Stripe\PaymentIntent::create(
-				array(
-					'amount'         => (int) round( $total * 100 ), // Convert to cents
-					'currency'       => strtolower( $currency ),
-					'transfer_group' => $transfer_group,
-					'metadata'       => array(
-						'property_id' => $property_id,
-						'source'      => 'str_direct_booking',
-					),
-					'automatic_payment_methods' => array( 'enabled' => true ),
-				)
-			);
+			$intent = \Stripe\PaymentIntent::create( $args );
 
 			return array(
 				'id'            => $intent->id,
@@ -83,6 +89,74 @@ class PaymentHandler {
 				'amount'        => $intent->amount,
 				'status'        => $intent->status,
 			);
+		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			return new \WP_Error( 'stripe_error', $e->getMessage() );
+		}
+	}
+
+	/**
+	 * Create a Stripe Customer for a guest.
+	 *
+	 * @param string $email Guest email address.
+	 * @param string $name  Guest full name.
+	 * @return string|\WP_Error Stripe Customer ID (cus_XXXX) or WP_Error.
+	 */
+	public function create_stripe_customer( string $email, string $name ): string|\WP_Error {
+		$this->init_stripe();
+
+		try {
+			$customer = \Stripe\Customer::create(
+				array(
+					'email'  => $email,
+					'name'   => $name,
+					'metadata' => array( 'source' => 'str_direct_booking' ),
+				)
+			);
+
+			return $customer->id;
+		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			return new \WP_Error( 'stripe_error', $e->getMessage() );
+		}
+	}
+
+	/**
+	 * Charge an off-session payment using a saved customer + payment method.
+	 *
+	 * Used for scheduled installment payments on multi-payment plan bookings.
+	 *
+	 * @param string $customer_id       Stripe Customer ID.
+	 * @param string $payment_method_id Stripe PaymentMethod ID.
+	 * @param int    $amount_cents      Amount in cents.
+	 * @param string $currency          Currency code (e.g. 'usd').
+	 * @param array  $metadata          Metadata to attach to the PaymentIntent.
+	 * @return array|\WP_Error PaymentIntent data or WP_Error.
+	 */
+	public function charge_off_session( string $customer_id, string $payment_method_id, int $amount_cents, string $currency, array $metadata = array() ): array|\WP_Error {
+		$this->init_stripe();
+
+		try {
+			$intent = \Stripe\PaymentIntent::create(
+				array(
+					'amount'               => $amount_cents,
+					'currency'             => strtolower( $currency ),
+					'customer'             => $customer_id,
+					'payment_method'       => $payment_method_id,
+					'confirm'              => true,
+					'off_session'          => true,
+					'metadata'             => array_merge(
+						array( 'source' => 'str_direct_booking' ),
+						$metadata
+					),
+				)
+			);
+
+			return array(
+				'id'     => $intent->id,
+				'status' => $intent->status,
+				'amount' => $intent->amount,
+			);
+		} catch ( \Stripe\Exception\CardException $e ) {
+			return new \WP_Error( 'card_error', $e->getMessage() );
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
 			return new \WP_Error( 'stripe_error', $e->getMessage() );
 		}
@@ -174,6 +248,20 @@ class PaymentHandler {
 			update_post_meta( $booking_id, 'str_stripe_charge_id', $charge_id );
 		}
 
+		// For multi-payment plans, save Customer + PaymentMethod IDs for future off-session charges
+		$payment_plan = get_post_meta( $booking_id, 'str_payment_plan', true );
+		if ( in_array( $payment_plan, array( 'two_payment', 'four_payment' ), true ) ) {
+			$customer_id       = $intent->customer ?? '';
+			$payment_method_id = $intent->payment_method ?? '';
+
+			if ( $customer_id ) {
+				update_post_meta( $booking_id, 'str_stripe_customer_id', $customer_id );
+			}
+			if ( $payment_method_id ) {
+				update_post_meta( $booking_id, 'str_stripe_payment_method_id', $payment_method_id );
+			}
+		}
+
 		// Mark availability
 		$booking = $this->booking_manager->get_booking( $booking_id );
 		if ( ! is_wp_error( $booking ) ) {
@@ -185,7 +273,7 @@ class PaymentHandler {
 			);
 
 			// Schedule co-host transfers for 24 hours after check-in
-			$checkin_ts    = strtotime( $booking['check_in'] ) + DAY_IN_SECONDS;
+			$checkin_ts     = strtotime( $booking['check_in'] ) + DAY_IN_SECONDS;
 			$transfer_group = get_post_meta( $booking_id, 'str_stripe_transfer_group', true );
 
 			wp_schedule_single_event(

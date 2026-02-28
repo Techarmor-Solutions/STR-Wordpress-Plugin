@@ -9,6 +9,7 @@ namespace STRBooking\Frontend;
 
 use STRBooking\BookingManager;
 use STRBooking\PaymentHandler;
+use STRBooking\PaymentPlanManager;
 use STRBooking\PricingEngine;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -104,6 +105,8 @@ class PublicAPI extends \WP_REST_Controller {
 					'guest_phone'     => array( 'required' => false, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 					'guest_count'     => array( 'required' => false, 'type' => 'integer', 'default' => 1, 'minimum' => 1 ),
 					'special_requests' => array( 'required' => false, 'type' => 'string', 'sanitize_callback' => 'sanitize_textarea_field' ),
+					'payment_plan'    => array( 'required' => false, 'type' => 'string', 'default' => 'pay_in_full', 'sanitize_callback' => 'sanitize_text_field' ),
+					'deposit_amount'  => array( 'required' => false, 'type' => 'number', 'minimum' => 0 ),
 				),
 			)
 		);
@@ -143,6 +146,22 @@ class PublicAPI extends \WP_REST_Controller {
 				'permission_callback' => function () {
 					return current_user_can( 'manage_options' );
 				},
+			)
+		);
+
+		// GET /calendar/{property_id} — public per-month availability (date+status only)
+		register_rest_route(
+			$this->namespace,
+			'/calendar/(?P<property_id>[\d]+)',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'get_public_calendar' ),
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'property_id' => array( 'required' => true, 'type' => 'integer' ),
+					'year'        => array( 'required' => false, 'type' => 'integer' ),
+					'month'       => array( 'required' => false, 'type' => 'integer' ),
+				),
 			)
 		);
 
@@ -216,10 +235,17 @@ class PublicAPI extends \WP_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function create_booking( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$property_id = (int) $request->get_param( 'property_id' );
-		$check_in    = sanitize_text_field( $request->get_param( 'check_in' ) );
-		$check_out   = sanitize_text_field( $request->get_param( 'check_out' ) );
-		$guests      = (int) ( $request->get_param( 'guest_count' ) ?: 1 );
+		$property_id  = (int) $request->get_param( 'property_id' );
+		$check_in     = sanitize_text_field( $request->get_param( 'check_in' ) );
+		$check_out    = sanitize_text_field( $request->get_param( 'check_out' ) );
+		$guests       = (int) ( $request->get_param( 'guest_count' ) ?: 1 );
+		$payment_plan = sanitize_text_field( $request->get_param( 'payment_plan' ) ?: 'pay_in_full' );
+
+		// Validate payment plan value
+		$valid_plans = array( 'pay_in_full', 'two_payment', 'four_payment' );
+		if ( ! in_array( $payment_plan, $valid_plans, true ) ) {
+			$payment_plan = 'pay_in_full';
+		}
 
 		// Check availability
 		if ( ! $this->booking_manager->check_availability( $property_id, $check_in, $check_out ) ) {
@@ -232,9 +258,39 @@ class PublicAPI extends \WP_REST_Controller {
 			return new \WP_Error( $pricing->get_error_code(), $pricing->get_error_message(), array( 'status' => 400 ) );
 		}
 
-		// Create Stripe PaymentIntent
+		$total        = (float) $pricing['total'];
+		$charge_amount = $total; // Default: charge full amount
+
+		// For multi-payment plans, determine the deposit amount
+		$customer_id = null;
+		if ( 'two_payment' === $payment_plan ) {
+			$plan_mgr         = new PaymentPlanManager();
+			$two_deposit_pct  = (int) ( get_post_meta( $property_id, 'str_plan_two_deposit_pct', true ) ?: 50 );
+			$charge_amount    = round( $total * $two_deposit_pct / 100, 2 );
+		} elseif ( 'four_payment' === $payment_plan ) {
+			$plan_mgr         = new PaymentPlanManager();
+			$deposit_param    = (float) ( $request->get_param( 'deposit_amount' ) ?: 0 );
+			$four_min_pct     = (int) ( get_post_meta( $property_id, 'str_plan_four_deposit_min_pct', true ) ?: 25 );
+			$min_deposit      = round( $total * $four_min_pct / 100, 2 );
+			$charge_amount    = ( $deposit_param >= $min_deposit ) ? round( $deposit_param, 2 ) : $min_deposit;
+		}
+
+		// For multi-payment plans, create a Stripe Customer so we can vault the payment method
+		if ( 'pay_in_full' !== $payment_plan ) {
+			$guest_email = sanitize_email( $request->get_param( 'guest_email' ) );
+			$guest_name  = sanitize_text_field( $request->get_param( 'guest_name' ) );
+			$customer    = $this->payment_handler->create_stripe_customer( $guest_email, $guest_name );
+
+			if ( is_wp_error( $customer ) ) {
+				return new \WP_Error( $customer->get_error_code(), $customer->get_error_message(), array( 'status' => 500 ) );
+			}
+
+			$customer_id = $customer;
+		}
+
+		// Create Stripe PaymentIntent (for deposit amount only on multi-pay plans)
 		$transfer_group = 'STR_BOOKING_' . uniqid( '', true );
-		$intent         = $this->payment_handler->create_payment_intent( $pricing['total'], $transfer_group, $property_id );
+		$intent         = $this->payment_handler->create_payment_intent( $charge_amount, $transfer_group, $property_id, $customer_id );
 
 		if ( is_wp_error( $intent ) ) {
 			return new \WP_Error( $intent->get_error_code(), $intent->get_error_message(), array( 'status' => 500 ) );
@@ -255,7 +311,7 @@ class PublicAPI extends \WP_REST_Controller {
 			'cleaning_fee'           => $pricing['cleaning_fee'],
 			'security_deposit'       => $pricing['security_deposit'],
 			'taxes'                  => $pricing['taxes'],
-			'total'                  => $pricing['total'],
+			'total'                  => $total,
 			'los_discount'           => $pricing['los_discount'],
 			'stripe_payment_intent'  => $intent['id'],
 			'stripe_transfer_group'  => $transfer_group,
@@ -269,17 +325,32 @@ class PublicAPI extends \WP_REST_Controller {
 			return new \WP_Error( $booking_id->get_error_code(), $booking_id->get_error_message(), array( 'status' => 500 ) );
 		}
 
+		// Persist payment plan meta
+		update_post_meta( $booking_id, 'str_payment_plan', $payment_plan );
+
 		// Update PaymentIntent metadata with booking_id
 		$this->payment_handler->update_payment_intent_metadata( $intent['id'], array( 'booking_id' => $booking_id ) );
 
-		return new \WP_REST_Response(
-			array(
-				'booking_id'    => $booking_id,
-				'client_secret' => $intent['client_secret'],
-				'total'         => $pricing['total'],
-			),
-			201
+		// Build installment schedule and schedule cron events
+		$installment_schedule = array();
+		if ( 'pay_in_full' !== $payment_plan ) {
+			$plan_manager         = new PaymentPlanManager();
+			$installment_schedule = $plan_manager->create_installment_schedule( $booking_id, $payment_plan, $charge_amount, $total, $check_in );
+		}
+
+		$response_data = array(
+			'booking_id'           => $booking_id,
+			'client_secret'        => $intent['client_secret'],
+			'total'                => $total,
+			'payment_plan'         => $payment_plan,
+			'charge_amount'        => $charge_amount,
 		);
+
+		if ( ! empty( $installment_schedule ) ) {
+			$response_data['installment_schedule'] = $installment_schedule;
+		}
+
+		return new \WP_REST_Response( $response_data, 201 );
 	}
 
 	/**
@@ -310,6 +381,38 @@ class PublicAPI extends \WP_REST_Controller {
 	 */
 	public function get_admin_metrics( \WP_REST_Request $request ): \WP_REST_Response {
 		return rest_ensure_response( $this->booking_manager->get_metrics() );
+	}
+
+	/**
+	 * GET /calendar/{property_id} — public monthly availability (date + status only).
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response
+	 */
+	public function get_public_calendar( \WP_REST_Request $request ): \WP_REST_Response {
+		global $wpdb;
+
+		$property_id = (int) $request->get_param( 'property_id' );
+		$year        = (int) ( $request->get_param( 'year' ) ?: date( 'Y' ) );
+		$month       = (int) ( $request->get_param( 'month' ) ?: date( 'n' ) );
+
+		$start = sprintf( '%04d-%02d-01', $year, $month );
+		$end   = date( 'Y-m-d', strtotime( $start . ' +1 month' ) );
+
+		$table = $wpdb->prefix . 'str_availability';
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT date, status FROM {$table}
+				WHERE property_id = %d AND date >= %s AND date < %s",
+				$property_id,
+				$start,
+				$end
+			),
+			ARRAY_A
+		);
+
+		return rest_ensure_response( $rows );
 	}
 
 	/**

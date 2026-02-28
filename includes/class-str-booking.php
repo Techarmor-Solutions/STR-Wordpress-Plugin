@@ -11,9 +11,11 @@
 namespace STRBooking;
 
 use STRBooking\Admin\AdminDashboard;
+use STRBooking\Admin\NotificationSettings;
 use STRBooking\Admin\PropertyManager;
 use STRBooking\Admin\Settings;
 use STRBooking\Frontend\BookingWidget;
+use STRBooking\Frontend\CalendarWidget;
 use STRBooking\Frontend\PublicAPI;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -78,6 +80,11 @@ class STRBooking {
 	public BookingWidget $booking_widget;
 
 	/**
+	 * @var CalendarWidget
+	 */
+	public CalendarWidget $calendar_widget;
+
+	/**
 	 * @var AdminDashboard
 	 */
 	public AdminDashboard $admin_dashboard;
@@ -86,6 +93,16 @@ class STRBooking {
 	 * @var Settings
 	 */
 	public Settings $settings;
+
+	/**
+	 * @var PaymentPlanManager
+	 */
+	public PaymentPlanManager $payment_plan_manager;
+
+	/**
+	 * @var NotificationSettings
+	 */
+	public NotificationSettings $notification_settings;
 
 	/**
 	 * Get or create singleton instance.
@@ -104,17 +121,20 @@ class STRBooking {
 	 * Private constructor — instantiates all managers.
 	 */
 	private function __construct() {
-		$this->booking_manager      = new BookingManager();
-		$this->pricing_engine       = new PricingEngine();
-		$this->cohost_manager       = new CohostManager();
-		$this->payment_handler      = new PaymentHandler( $this->booking_manager, $this->cohost_manager );
-		$this->calendar_sync        = new CalendarSync( $this->booking_manager );
-		$this->notification_manager = new NotificationManager();
-		$this->property_manager     = new PropertyManager();
-		$this->public_api           = new PublicAPI( $this->booking_manager, $this->pricing_engine, $this->payment_handler );
-		$this->booking_widget       = new BookingWidget();
-		$this->admin_dashboard      = new AdminDashboard( $this->booking_manager );
-		$this->settings             = new Settings();
+		$this->booking_manager        = new BookingManager();
+		$this->pricing_engine         = new PricingEngine();
+		$this->cohost_manager         = new CohostManager();
+		$this->payment_handler        = new PaymentHandler( $this->booking_manager, $this->cohost_manager );
+		$this->payment_plan_manager   = new PaymentPlanManager();
+		$this->calendar_sync          = new CalendarSync( $this->booking_manager );
+		$this->notification_manager   = new NotificationManager();
+		$this->property_manager       = new PropertyManager();
+		$this->public_api             = new PublicAPI( $this->booking_manager, $this->pricing_engine, $this->payment_handler );
+		$this->booking_widget         = new BookingWidget();
+		$this->calendar_widget        = new CalendarWidget();
+		$this->admin_dashboard        = new AdminDashboard( $this->booking_manager );
+		$this->settings               = new Settings();
+		$this->notification_settings  = new NotificationSettings();
 	}
 
 	/**
@@ -140,6 +160,7 @@ class STRBooking {
 		// Clear any pending notification hooks
 		wp_clear_scheduled_hook( 'str_send_notification' );
 		wp_clear_scheduled_hook( 'str_booking_process_transfers' );
+		wp_clear_scheduled_hook( 'str_charge_installment' );
 
 		flush_rewrite_rules();
 	}

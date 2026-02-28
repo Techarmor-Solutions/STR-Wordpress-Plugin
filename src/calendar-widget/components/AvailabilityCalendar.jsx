@@ -7,11 +7,7 @@
 import { useState, useEffect } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
-const { apiUrl, nonce } = window.strBookingData || {};
-
-if ( nonce ) {
-	apiFetch.use( apiFetch.createNonceMiddleware( nonce ) );
-}
+const { apiUrl, nonce } = window.strCalendarData || {};
 
 export default function AvailabilityCalendar( { propertyId } ) {
 	const today = new Date();
@@ -28,7 +24,7 @@ export default function AvailabilityCalendar( { propertyId } ) {
 		setIsLoading( true );
 		try {
 			const data = await apiFetch( {
-				url: `${ apiUrl }/admin/availability/${ propertyId }?year=${ year }&month=${ month }`,
+				url: `${ apiUrl }/calendar/${ propertyId }?year=${ year }&month=${ month }`,
 				method: 'GET',
 			} );
 			setCalendarData( Array.isArray( data ) ? data : [] );

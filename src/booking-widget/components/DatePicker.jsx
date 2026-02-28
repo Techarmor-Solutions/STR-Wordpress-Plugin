@@ -15,17 +15,27 @@ if ( nonce ) {
 	apiFetch.use( apiFetch.createNonceMiddleware( nonce ) );
 }
 
+/**
+ * Parse a YYYY-MM-DD string as LOCAL midnight, not UTC midnight.
+ * new Date("YYYY-MM-DD") parses as UTC which causes date math to be
+ * off by one day in negative-offset timezones (most of the US).
+ */
+function parseLocalDate( dateStr ) {
+	const [ year, month, day ] = dateStr.split( '-' ).map( Number );
+	return new Date( year, month - 1, day );
+}
+
 function formatDate( date ) {
 	if ( ! date ) return '';
-	const d = new Date( date );
+	const d = date instanceof Date ? date : new Date( date );
 	const year = d.getFullYear();
 	const month = String( d.getMonth() + 1 ).padStart( 2, '0' );
 	const day = String( d.getDate() ).padStart( 2, '0' );
 	return `${ year }-${ month }-${ day }`;
 }
 
-function addDays( date, days ) {
-	const result = new Date( date );
+function addDays( localDate, days ) {
+	const result = new Date( localDate );
 	result.setDate( result.getDate() + days );
 	return result;
 }
@@ -48,9 +58,9 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 
 	async function loadBlockedDates() {
 		try {
-			const today = new Date();
+			const now = new Date();
 			const data = await apiFetch( {
-				url: `${ apiUrl }/admin/availability/${ propertyId }?year=${ today.getFullYear() }&month=${ today.getMonth() + 1 }`,
+				url: `${ apiUrl }/calendar/${ propertyId }?year=${ now.getFullYear() }&month=${ now.getMonth() + 1 }`,
 				method: 'GET',
 			} );
 
@@ -124,13 +134,13 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 
 	const today = formatDate( new Date() );
 	const minCheckout = checkIn
-		? formatDate( addDays( new Date( checkIn ), minNights ) )
+		? formatDate( addDays( parseLocalDate( checkIn ), minNights ) )
 		: today;
 
 	const nights =
 		checkIn && checkOut
 			? Math.round(
-					( new Date( checkOut ) - new Date( checkIn ) ) /
+					( parseLocalDate( checkOut ) - parseLocalDate( checkIn ) ) /
 						( 1000 * 60 * 60 * 24 )
 			  )
 			: 0;

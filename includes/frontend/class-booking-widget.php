@@ -7,6 +7,8 @@
 
 namespace STRBooking\Frontend;
 
+use STRBooking\PaymentPlanManager;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -152,6 +154,8 @@ class BookingWidget {
 	 * @param int $property_id Post ID of the str_property.
 	 */
 	private function localize_property( int $property_id ): void {
+		$plan_manager = new PaymentPlanManager();
+
 		wp_localize_script(
 			'str-booking-widget',
 			'strBookingProperty',
@@ -163,6 +167,7 @@ class BookingWidget {
 				'maxNights'    => (int) get_post_meta( $property_id, 'str_max_nights', true ) ?: 365,
 				'checkInTime'  => get_post_meta( $property_id, 'str_check_in_time', true ) ?: '15:00',
 				'checkOutTime' => get_post_meta( $property_id, 'str_check_out_time', true ) ?: '11:00',
+				'planConfig'   => $plan_manager->get_plan_config( $property_id ),
 			)
 		);
 	}
