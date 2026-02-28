@@ -1,10 +1,14 @@
 /**
  * DatePicker — date selection with availability checking.
  *
+ * Blocked dates are loaded up-front (18 months) and used to constrain
+ * the checkout input's max attribute directly. The user cannot select
+ * an invalid checkout — the browser natively disables out-of-range dates.
+ *
  * @package STRBooking
  */
 
-import { useState, useEffect, useCallback } from '@wordpress/element';
+import { useState, useEffect } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
 const { apiUrl, nonce } = window.strBookingData || {};
@@ -34,13 +38,6 @@ function formatDate( date ) {
 	return `${ year }-${ month }-${ day }`;
 }
 
-function formatDateShort( dateStr ) {
-	if ( ! dateStr ) return '';
-	const [ year, month, day ] = dateStr.split( '-' ).map( Number );
-	const d = new Date( year, month - 1, day );
-	return d.toLocaleDateString( 'en-US', { month: 'short', day: 'numeric' } );
-}
-
 function addDays( localDate, days ) {
 	const result = new Date( localDate );
 	result.setDate( result.getDate() + days );
@@ -48,54 +45,87 @@ function addDays( localDate, days ) {
 }
 
 /**
- * Convert a sorted array of YYYY-MM-DD strings into consecutive date ranges.
- * e.g. ['2025-06-10','2025-06-11','2025-06-13'] → [{start:'06-10',end:'06-11'},{start:'06-13',end:'06-13'}]
+ * Given a check-in date string, compute:
+ * - minCheckout: checkIn + minNights
+ * - maxCheckout: day before the first blocked date on or after checkIn+1,
+ *                or null if no blocked dates exist in that window
  */
-function getBlockedRanges( sortedDates ) {
-	if ( ! sortedDates.length ) return [];
-	const ranges = [];
-	let start = sortedDates[ 0 ];
-	let prev  = sortedDates[ 0 ];
+function computeCheckoutWindow( checkIn, blockedDates, minNights ) {
+	const checkInDate = parseLocalDate( checkIn );
+	const minCheckout = formatDate( addDays( checkInDate, minNights ) );
 
-	for ( let i = 1; i < sortedDates.length; i++ ) {
-		const curr     = sortedDates[ i ];
-		const prevDate = parseLocalDate( prev );
-		const currDate = parseLocalDate( curr );
-		const diff     = ( currDate - prevDate ) / ( 1000 * 60 * 60 * 24 );
+	// Scan forward from checkIn+1 looking for the first blocked date
+	let maxCheckout = null;
+	const scan = new Date( checkInDate );
+	scan.setDate( scan.getDate() + 1 ); // start day after check-in
+	const horizon = addDays( checkInDate, 540 ); // 18 months ahead
 
-		if ( diff === 1 ) {
-			prev = curr;
-		} else {
-			ranges.push( { start, end: prev } );
-			start = curr;
-			prev  = curr;
+	while ( scan < horizon ) {
+		const dateStr = formatDate( scan );
+		if ( blockedDates.has( dateStr ) ) {
+			// maxCheckout = the day before this blocked date
+			const prev = new Date( scan );
+			prev.setDate( prev.getDate() - 1 );
+			maxCheckout = formatDate( prev );
+			break;
 		}
+		scan.setDate( scan.getDate() + 1 );
 	}
-	ranges.push( { start, end: prev } );
-	return ranges;
+
+	return { minCheckout, maxCheckout };
 }
 
 export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
-	const [ checkIn, setCheckIn ]               = useState( '' );
-	const [ checkOut, setCheckOut ]             = useState( '' );
-	const [ guests, setGuests ]                 = useState( 1 );
-	const [ isChecking, setIsChecking ]         = useState( false );
+	const [ checkIn, setCheckIn ]                   = useState( '' );
+	const [ checkOut, setCheckOut ]                 = useState( '' );
+	const [ guests, setGuests ]                     = useState( 1 );
+	const [ blockedDates, setBlockedDates ]         = useState( new Set() );
+	const [ isLoadingDates, setIsLoadingDates ]     = useState( true );
+	const [ availability, setAvailability ]         = useState( null ); // null | true | false
+	const [ isChecking, setIsChecking ]             = useState( false );
 	const [ isLoadingPricing, setIsLoadingPricing ] = useState( false );
-	const [ blockedDates, setBlockedDates ]     = useState( [] );
-	const [ availability, setAvailability ]     = useState( null );
+	const [ noWindowMessage, setNoWindowMessage ]   = useState( '' );
+
 	const minNights = propertyConfig.minNights || 1;
 	const maxGuests = propertyConfig.maxGuests || 16;
 
-	// Load blocked dates for the current month and the next 2 months
+	// Load 18 months of blocked dates on mount
 	useEffect( () => {
 		loadBlockedDates();
 	}, [ propertyId ] ); // eslint-disable-line react-hooks/exhaustive-deps
 
+	// Check availability whenever a complete check-in + check-out pair is set
+	useEffect( () => {
+		if ( ! checkIn || ! checkOut ) return;
+		let cancelled = false;
+
+		setIsChecking( true );
+		setAvailability( null );
+
+		apiFetch( {
+			url:    `${ apiUrl }/availability`,
+			method: 'POST',
+			data:   { property_id: propertyId, check_in: checkIn, check_out: checkOut },
+		} )
+			.then( ( data ) => {
+				if ( ! cancelled ) setAvailability( data.available );
+			} )
+			.catch( () => {
+				if ( ! cancelled ) onError( 'Could not check availability. Please try again.' );
+			} )
+			.finally( () => {
+				if ( ! cancelled ) setIsChecking( false );
+			} );
+
+		return () => { cancelled = true; };
+	}, [ checkIn, checkOut ] ); // eslint-disable-line react-hooks/exhaustive-deps
+
 	async function loadBlockedDates() {
+		setIsLoadingDates( true );
 		try {
-			const now    = new Date();
+			const now = new Date();
 			const months = [];
-			for ( let i = 0; i < 3; i++ ) {
+			for ( let i = 0; i < 18; i++ ) {
 				const d = new Date( now.getFullYear(), now.getMonth() + i, 1 );
 				months.push( { year: d.getFullYear(), month: d.getMonth() + 1 } );
 			}
@@ -110,60 +140,37 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 			);
 
 			const allRows = results.flat();
-			if ( Array.isArray( allRows ) ) {
-				setBlockedDates(
-					allRows
-						.filter( ( row ) => row.status !== 'available' )
-						.map( ( row ) => row.date )
-						.sort()
-				);
-			}
-		} catch ( err ) {
-			// Non-critical — just won't show blocked dates visually
+			const blocked = new Set(
+				allRows.filter( ( r ) => r.status !== 'available' ).map( ( r ) => r.date )
+			);
+			setBlockedDates( blocked );
+		} catch ( e ) {
+			// Non-fatal — availability API will still catch conflicts server-side
+		} finally {
+			setIsLoadingDates( false );
 		}
 	}
 
-	const checkAvailability = useCallback( async () => {
-		if ( ! checkIn || ! checkOut ) return;
-
-		setIsChecking( true );
+	function handleCheckInChange( value ) {
+		setCheckIn( value );
+		setCheckOut( '' );
 		setAvailability( null );
+		setNoWindowMessage( '' );
 
-		try {
-			const data = await apiFetch( {
-				url:    `${ apiUrl }/availability`,
-				method: 'POST',
-				data:   {
-					property_id: propertyId,
-					check_in:    checkIn,
-					check_out:   checkOut,
-				},
-			} );
+		if ( ! value ) return;
 
-			setAvailability( data.available );
-		} catch ( err ) {
-			onError( 'Could not check availability. Please try again.' );
-		} finally {
-			setIsChecking( false );
+		const { minCheckout, maxCheckout } = computeCheckoutWindow( value, blockedDates, minNights );
+
+		if ( maxCheckout && maxCheckout < minCheckout ) {
+			setNoWindowMessage(
+				`No availability from this check-in date (minimum ${ minNights }-night stay required). ` +
+				`Please select a different check-in date.`
+			);
 		}
-	}, [ checkIn, checkOut, propertyId, onError ] );
-
-	useEffect( () => {
-		if ( checkIn && checkOut ) {
-			checkAvailability();
-		}
-	}, [ checkIn, checkOut, checkAvailability ] );
+	}
 
 	async function handleContinue() {
 		if ( ! checkIn || ! checkOut || ! availability ) return;
-
-		if ( nights < minNights ) {
-			onError(
-				`Minimum stay is ${ minNights } ${ minNights === 1 ? 'night' : 'nights' }. ` +
-				`Please select a check-out date at least ${ minNights } ${ minNights === 1 ? 'night' : 'nights' } after check-in.`
-			);
-			return;
-		}
 
 		setIsLoadingPricing( true );
 
@@ -171,12 +178,7 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 			const pricing = await apiFetch( {
 				url:    `${ apiUrl }/pricing`,
 				method: 'POST',
-				data:   {
-					property_id: propertyId,
-					check_in:    checkIn,
-					check_out:   checkOut,
-					guests,
-				},
+				data:   { property_id: propertyId, check_in: checkIn, check_out: checkOut, guests },
 			} );
 
 			onDatesSelected( checkIn, checkOut, pricing );
@@ -187,26 +189,25 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 		}
 	}
 
-	const today       = formatDate( new Date() );
-	const minCheckout = checkIn
-		? formatDate( addDays( parseLocalDate( checkIn ), minNights ) )
-		: today;
+	// Derived values
+	const today = formatDate( new Date() );
+
+	const { minCheckout, maxCheckout } = checkIn
+		? computeCheckoutWindow( checkIn, blockedDates, minNights )
+		: { minCheckout: today, maxCheckout: null };
+
+	const windowTooNarrow = checkIn && maxCheckout && maxCheckout < minCheckout;
 
 	const nights =
 		checkIn && checkOut
-			? Math.round(
-					( parseLocalDate( checkOut ) - parseLocalDate( checkIn ) ) /
-						( 1000 * 60 * 60 * 24 )
-			  )
+			? Math.round( ( parseLocalDate( checkOut ) - parseLocalDate( checkIn ) ) / 86400000 )
 			: 0;
-
-	// Only show upcoming blocked ranges (today or later)
-	const upcomingBlocked = blockedDates.filter( ( d ) => d >= today );
-	const blockedRanges   = getBlockedRanges( upcomingBlocked );
 
 	return (
 		<div className="str-date-picker">
 			<h3>Select Your Dates</h3>
+
+			{ isLoadingDates && <p className="str-status">Loading availability...</p> }
 
 			<div className="str-field-group">
 				<div className="str-field">
@@ -216,11 +217,7 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 						id="str-checkin"
 						value={ checkIn }
 						min={ today }
-						onChange={ ( e ) => {
-							setCheckIn( e.target.value );
-							setCheckOut( '' );
-							setAvailability( null );
-						} }
+						onChange={ ( e ) => handleCheckInChange( e.target.value ) }
 					/>
 				</div>
 
@@ -231,7 +228,8 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 						id="str-checkout"
 						value={ checkOut }
 						min={ minCheckout }
-						disabled={ ! checkIn }
+						max={ maxCheckout || undefined }
+						disabled={ ! checkIn || !! windowTooNarrow || isLoadingDates }
 						onChange={ ( e ) => {
 							setCheckOut( e.target.value );
 							setAvailability( null );
@@ -256,41 +254,25 @@ export default function DatePicker( { propertyId, onDatesSelected, onError } ) {
 			</div>
 
 			{ minNights > 1 && (
-				<p className="str-min-nights-note">
-					Minimum stay: { minNights } nights
+				<p className="str-min-nights-note">Minimum stay: { minNights } nights</p>
+			) }
+
+			{ windowTooNarrow && (
+				<p className="str-availability-unavailable">{ noWindowMessage }</p>
+			) }
+
+			{ isChecking && <p className="str-status">Checking availability...</p> }
+
+			{ ! isChecking && availability === true && nights > 0 && (
+				<p className="str-availability-ok">
+					✓ Available for { nights } { nights === 1 ? 'night' : 'nights' }
 				</p>
 			) }
 
-			{ blockedRanges.length > 0 && (
-				<div className="str-blocked-dates-notice">
-					<strong>Already booked:</strong>{ ' ' }
-					{ blockedRanges.map( ( r, i ) => (
-						<span key={ r.start }>
-							{ i > 0 && ', ' }
-							{ r.start === r.end
-								? formatDateShort( r.start )
-								: `${ formatDateShort( r.start ) }–${ formatDateShort( r.end ) }` }
-						</span>
-					) ) }
-				</div>
-			) }
-
-			{ isChecking && (
-				<p className="str-status">Checking availability...</p>
-			) }
-
-			{ ! isChecking && availability === true && nights > 0 && (
-				<div className="str-availability-ok">
-					<p>
-						✓ Available for { nights } { nights === 1 ? 'night' : 'nights' }
-					</p>
-				</div>
-			) }
-
 			{ ! isChecking && availability === false && (
-				<div className="str-availability-unavailable">
-					<p>✗ Sorry, those dates are not available. Please select different dates.</p>
-				</div>
+				<p className="str-availability-unavailable">
+					✗ Those dates are not available. Please select different dates.
+				</p>
 			) }
 
 			<button
