@@ -1,10 +1,10 @@
 /**
- * PaymentForm — Stripe Elements payment step.
+ * PaymentForm — Stripe Elements or Square Web Payments SDK payment step.
  *
  * @package STRBooking
  */
 
-import { useState } from '@wordpress/element';
+import { useState, useEffect, useRef } from '@wordpress/element';
 import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import apiFetch from '@wordpress/api-fetch';
 
@@ -30,7 +30,166 @@ const PLAN_LABELS = {
 	four_payment: '4-Payment Plan',
 };
 
-export default function PaymentForm( {
+// ── Square Payment Form ────────────────────────────────────────────────────────
+
+function SquarePaymentForm( {
+	propertyId,
+	dates,
+	pricing,
+	guestDetails,
+	paymentPlan,
+	onSuccess,
+	onBack,
+	onError,
+} ) {
+	const [ isInitializing, setIsInitializing ] = useState( true );
+	const [ isProcessing, setIsProcessing ] = useState( false );
+	const cardRef = useRef( null );
+	const squareCardRef = useRef( null );
+
+	const { currency, squareAppId, squareLocationId } = window.strBookingData || {};
+	const plan = paymentPlan?.plan || 'pay_in_full';
+
+	useEffect( () => {
+		let mounted = true;
+
+		async function initSquare() {
+			if ( ! window.Square ) {
+				onError( 'Square payment SDK failed to load. Please refresh and try again.' );
+				setIsInitializing( false );
+				return;
+			}
+
+			try {
+				const payments = window.Square.payments( squareAppId, squareLocationId );
+				const card = await payments.card();
+				squareCardRef.current = card;
+
+				if ( mounted && cardRef.current ) {
+					await card.attach( cardRef.current );
+				}
+			} catch ( err ) {
+				if ( mounted ) {
+					onError( err?.message || 'Could not initialize Square payment form.' );
+				}
+			} finally {
+				if ( mounted ) setIsInitializing( false );
+			}
+		}
+
+		initSquare();
+
+		return () => {
+			mounted = false;
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [] );
+
+	async function handleSubmit( e ) {
+		e.preventDefault();
+
+		if ( ! squareCardRef.current || isProcessing ) return;
+
+		setIsProcessing( true );
+
+		try {
+			const tokenResult = await squareCardRef.current.tokenize();
+
+			if ( tokenResult.status !== 'OK' ) {
+				const msg = tokenResult.errors?.map( ( err ) => err.message ).join( ' ' ) || 'Card tokenization failed.';
+				onError( msg );
+				setIsProcessing( false );
+				return;
+			}
+
+			const result = await apiFetch( {
+				url:    `${ apiUrl }/booking`,
+				method: 'POST',
+				data:   {
+					property_id:      propertyId,
+					check_in:         dates.checkIn,
+					check_out:        dates.checkOut,
+					guest_name:       guestDetails.guest_name,
+					guest_email:      guestDetails.guest_email,
+					guest_phone:      guestDetails.guest_phone || '',
+					guest_count:      guestDetails.guest_count || 1,
+					special_requests: guestDetails.special_requests || '',
+					source_id:        tokenResult.token,
+				},
+			} );
+
+			onSuccess( {
+				bookingId: result.booking_id,
+				total:     pricing?.total,
+				currency,
+				plan:      'pay_in_full',
+			} );
+		} catch ( err ) {
+			onError( err?.message || 'Payment failed. Please try again.' );
+			setIsProcessing( false );
+		}
+	}
+
+	return (
+		<div className="str-payment-form">
+			<div className="str-payment-summary">
+				<h3>Payment</h3>
+				<p className="str-total-due">
+					Total due today:{ ' ' }
+					<strong>{ formatCurrency( pricing?.total, currency ) }</strong>
+				</p>
+				{ pricing?.security_deposit > 0 && (
+					<p className="str-deposit-note">
+						Includes { formatCurrency( pricing.security_deposit, currency ) } security
+						deposit, refundable after check-out.
+					</p>
+				) }
+			</div>
+
+			<form onSubmit={ handleSubmit }>
+				{ isInitializing && (
+					<div className="str-payment-loading">
+						<p>Loading payment form...</p>
+					</div>
+				) }
+
+				<div
+					id="str-square-card"
+					ref={ cardRef }
+					style={ { minHeight: isInitializing ? 0 : undefined } }
+				/>
+
+				<div className="str-btn-row" style={ { marginTop: '24px' } }>
+					<button
+						type="button"
+						className="str-btn str-btn-secondary"
+						onClick={ onBack }
+						disabled={ isProcessing }
+					>
+						← Back
+					</button>
+					<button
+						type="submit"
+						className="str-btn str-btn-primary"
+						disabled={ isInitializing || isProcessing }
+					>
+						{ isProcessing
+							? 'Processing...'
+							: `Pay ${ formatCurrency( pricing?.total, currency ) }` }
+					</button>
+				</div>
+
+				<p className="str-secure-notice">
+					🔒 Payment secured by Square. Your card details are never stored on this site.
+				</p>
+			</form>
+		</div>
+	);
+}
+
+// ── Stripe Payment Form ───────────────────────────────────────────────────────
+
+function StripePaymentForm( {
 	propertyId,
 	dates,
 	pricing,
@@ -53,7 +212,7 @@ export default function PaymentForm( {
 
 	const { currency } = window.strBookingData || {};
 
-	const plan         = paymentPlan?.plan || 'pay_in_full';
+	const plan          = paymentPlan?.plan || 'pay_in_full';
 	const depositAmount = paymentPlan?.depositAmount || pricing?.total || 0;
 
 	// Create booking and get client_secret on mount
@@ -182,7 +341,7 @@ export default function PaymentForm( {
 		},
 	};
 
-	const isDueToday = plan !== 'pay_in_full';
+	const isDueToday    = plan !== 'pay_in_full';
 	const displayAmount = isDueToday ? depositAmount : pricing?.total;
 
 	return (
@@ -253,6 +412,18 @@ export default function PaymentForm( {
 		</div>
 	);
 }
+
+// ── Default export — switches on activeGateway ────────────────────────────────
+
+export default function PaymentForm( props ) {
+	const { activeGateway } = window.strBookingData || {};
+
+	return activeGateway === 'square'
+		? <SquarePaymentForm { ...props } />
+		: <StripePaymentForm { ...props } />;
+}
+
+// ── InstallmentSummary (Stripe-only feature) ──────────────────────────────────
 
 function InstallmentSummary( { schedule, plan, currency } ) {
 	if ( ! schedule || ! schedule.length ) return null;

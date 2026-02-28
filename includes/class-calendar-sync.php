@@ -363,6 +363,50 @@ class CalendarSync {
 	}
 
 	/**
+	 * Run imports for a single property (used by manual sync button).
+	 *
+	 * @param int $property_id Property post ID.
+	 * @return int Number of feeds processed.
+	 */
+	public function sync_property( int $property_id ): int {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'str_calendar_imports';
+
+		$feeds = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE property_id = %d AND sync_status != 'disabled'",
+				$property_id
+			),
+			ARRAY_A
+		);
+
+		foreach ( $feeds as $feed ) {
+			$this->import_feed( (int) $feed['id'], $feed );
+		}
+
+		return count( $feeds );
+	}
+
+	/**
+	 * Delete a calendar feed record.
+	 *
+	 * @param int $feed_id Feed row ID.
+	 * @return bool
+	 */
+	public function delete_feed( int $feed_id ): bool {
+		global $wpdb;
+
+		$result = $wpdb->delete(
+			$wpdb->prefix . 'str_calendar_imports',
+			array( 'id' => $feed_id ),
+			array( '%d' )
+		);
+
+		return false !== $result;
+	}
+
+	/**
 	 * Add a calendar feed import record.
 	 *
 	 * @param int    $property_id Property ID.

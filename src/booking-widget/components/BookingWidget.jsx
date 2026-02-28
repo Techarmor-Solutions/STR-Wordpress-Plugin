@@ -21,9 +21,11 @@ const STEPS = {
 	CONFIRMATION: 'CONFIRMATION',
 };
 
-const stripePromise = loadStripe(
-	window.strBookingData?.stripePublishableKey || ''
-);
+const { activeGateway } = window.strBookingData || {};
+
+const stripePromise = ( ! activeGateway || activeGateway === 'stripe' )
+	? loadStripe( window.strBookingData?.stripePublishableKey || '' )
+	: null;
 
 export default function BookingWidget( { propertyId } ) {
 	const [ step, setStep ] = useState( STEPS.DATES );
@@ -39,6 +41,11 @@ export default function BookingWidget( { propertyId } ) {
 
 	// Compute eligible plans based on selected check-in date and per-property plan config
 	function getEligiblePlans( checkin ) {
+		// Square supports pay-in-full only
+		if ( activeGateway === 'square' ) {
+			return [ 'pay_in_full' ];
+		}
+
 		const plans = [];
 
 		// Pay-in-full: enabled by default unless explicitly disabled
@@ -174,7 +181,7 @@ export default function BookingWidget( { propertyId } ) {
 			) }
 
 			{ step === STEPS.PAYMENT && (
-				<Elements stripe={ stripePromise }>
+				activeGateway === 'square' ? (
 					<PaymentForm
 						propertyId={ propertyId }
 						dates={ dates }
@@ -185,7 +192,20 @@ export default function BookingWidget( { propertyId } ) {
 						onBack={ handleBack }
 						onError={ setError }
 					/>
-				</Elements>
+				) : (
+					<Elements stripe={ stripePromise }>
+						<PaymentForm
+							propertyId={ propertyId }
+							dates={ dates }
+							pricing={ pricing }
+							guestDetails={ guestDetails }
+							paymentPlan={ paymentPlan }
+							onSuccess={ handlePaymentSuccess }
+							onBack={ handleBack }
+							onError={ setError }
+						/>
+					</Elements>
+				)
 			) }
 
 			{ step === STEPS.CONFIRMATION && (

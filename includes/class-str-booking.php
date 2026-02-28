@@ -11,12 +11,15 @@
 namespace STRBooking;
 
 use STRBooking\Admin\AdminDashboard;
+use STRBooking\Admin\CalendarSyncSettings;
 use STRBooking\Admin\NotificationSettings;
 use STRBooking\Admin\PropertyManager;
 use STRBooking\Admin\Settings;
 use STRBooking\Frontend\BookingWidget;
 use STRBooking\Frontend\CalendarWidget;
 use STRBooking\Frontend\PublicAPI;
+use STRBooking\PluginUpdater;
+use STRBooking\SquareHandler;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -105,6 +108,21 @@ class STRBooking {
 	public NotificationSettings $notification_settings;
 
 	/**
+	 * @var CalendarSyncSettings
+	 */
+	public CalendarSyncSettings $calendar_sync_settings;
+
+	/**
+	 * @var PluginUpdater
+	 */
+	public PluginUpdater $plugin_updater;
+
+	/**
+	 * @var SquareHandler
+	 */
+	public SquareHandler $square_handler;
+
+	/**
 	 * Get or create singleton instance.
 	 *
 	 * @return static
@@ -133,8 +151,11 @@ class STRBooking {
 		$this->booking_widget         = new BookingWidget();
 		$this->calendar_widget        = new CalendarWidget();
 		$this->admin_dashboard        = new AdminDashboard( $this->booking_manager );
-		$this->settings               = new Settings();
-		$this->notification_settings  = new NotificationSettings();
+		$this->settings                = new Settings();
+		$this->notification_settings   = new NotificationSettings();
+		$this->calendar_sync_settings  = new CalendarSyncSettings();
+		$this->plugin_updater          = new PluginUpdater( STR_BOOKING_PLUGIN_DIR . 'str-direct-booking.php' );
+		$this->square_handler          = new SquareHandler();
 	}
 
 	/**

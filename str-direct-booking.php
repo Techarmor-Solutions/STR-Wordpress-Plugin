@@ -20,6 +20,8 @@ define( 'STR_BOOKING_VERSION', '1.0.0' );
 define( 'STR_BOOKING_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'STR_BOOKING_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'STR_BOOKING_DB_VERSION', '1.0.0' );
+define( 'STR_BOOKING_GITHUB_USER', 'Techarmor-Solutions' );
+define( 'STR_BOOKING_GITHUB_REPO', 'STR-Wordpress-Plugin' );
 
 // Load Composer autoloader
 if ( file_exists( STR_BOOKING_PLUGIN_DIR . 'vendor/autoload.php' ) ) {

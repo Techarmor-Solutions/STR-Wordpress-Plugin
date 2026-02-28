@@ -66,15 +66,28 @@ class BookingWidget {
 			STR_BOOKING_VERSION
 		);
 
-		// Enqueue Stripe.js from CDN — never bundled (PCI requirement)
-		// No version string — Stripe manages versioning
-		wp_enqueue_script(
-			'stripe-js',
-			'https://js.stripe.com/v3/',
-			array(),
-			null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
-			false // Load in <head> as required by Stripe
-		);
+		$active_gateway = get_option( 'str_booking_payment_gateway', 'stripe' );
+
+		if ( 'square' === $active_gateway ) {
+			// Square Web Payments SDK — loaded from CDN
+			wp_enqueue_script(
+				'square-js',
+				'https://web.squarecdn.com/v1/square.js',
+				array(),
+				null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
+				false // Load in <head>
+			);
+		} else {
+			// Stripe.js from CDN — never bundled (PCI requirement)
+			// No version string — Stripe manages versioning
+			wp_enqueue_script(
+				'stripe-js',
+				'https://js.stripe.com/v3/',
+				array(),
+				null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
+				false // Load in <head> as required by Stripe
+			);
+		}
 
 		// Pass configuration to React
 		wp_localize_script(
@@ -87,6 +100,10 @@ class BookingWidget {
 				'currency'            => get_option( 'str_booking_currency', 'usd' ),
 				'dateFormat'          => get_option( 'date_format', 'F j, Y' ),
 				'siteUrl'             => get_bloginfo( 'url' ),
+				'activeGateway'       => $active_gateway,
+				'squareAppId'         => get_option( 'str_booking_square_application_id', '' ),
+				'squareLocationId'    => get_option( 'str_booking_square_location_id', '' ),
+				'squareEnvironment'   => get_option( 'str_booking_square_environment', 'sandbox' ),
 			)
 		);
 	}

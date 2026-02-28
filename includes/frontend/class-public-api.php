@@ -11,6 +11,7 @@ use STRBooking\BookingManager;
 use STRBooking\PaymentHandler;
 use STRBooking\PaymentPlanManager;
 use STRBooking\PricingEngine;
+use STRBooking\SquareHandler;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -229,23 +230,18 @@ class PublicAPI extends \WP_REST_Controller {
 	}
 
 	/**
-	 * POST /booking — create booking and return Stripe client_secret.
+	 * POST /booking — create booking via Stripe or Square.
 	 *
 	 * @param \WP_REST_Request $request
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function create_booking( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$property_id  = (int) $request->get_param( 'property_id' );
-		$check_in     = sanitize_text_field( $request->get_param( 'check_in' ) );
-		$check_out    = sanitize_text_field( $request->get_param( 'check_out' ) );
-		$guests       = (int) ( $request->get_param( 'guest_count' ) ?: 1 );
-		$payment_plan = sanitize_text_field( $request->get_param( 'payment_plan' ) ?: 'pay_in_full' );
-
-		// Validate payment plan value
-		$valid_plans = array( 'pay_in_full', 'two_payment', 'four_payment' );
-		if ( ! in_array( $payment_plan, $valid_plans, true ) ) {
-			$payment_plan = 'pay_in_full';
-		}
+		$property_id = (int) $request->get_param( 'property_id' );
+		$check_in    = sanitize_text_field( $request->get_param( 'check_in' ) );
+		$check_out   = sanitize_text_field( $request->get_param( 'check_out' ) );
+		$guests      = (int) ( $request->get_param( 'guest_count' ) ?: 1 );
+		$gateway     = get_option( 'str_booking_payment_gateway', 'stripe' );
+		$currency    = get_option( 'str_booking_currency', 'usd' );
 
 		// Check availability
 		if ( ! $this->booking_manager->check_availability( $property_id, $check_in, $check_out ) ) {
@@ -258,21 +254,89 @@ class PublicAPI extends \WP_REST_Controller {
 			return new \WP_Error( $pricing->get_error_code(), $pricing->get_error_message(), array( 'status' => 400 ) );
 		}
 
-		$total        = (float) $pricing['total'];
-		$charge_amount = $total; // Default: charge full amount
+		$total = (float) $pricing['total'];
+
+		if ( 'square' === $gateway ) {
+			// ── Square branch: pay-in-full only ───────────────────────────────
+			$source_id = sanitize_text_field( $request->get_param( 'source_id' ) ?? '' );
+
+			if ( empty( $source_id ) ) {
+				return new \WP_Error( 'missing_source', 'Square payment source token is required.', array( 'status' => 400 ) );
+			}
+
+			$booking_data = array(
+				'property_id'           => $property_id,
+				'guest_name'            => $request->get_param( 'guest_name' ),
+				'guest_email'           => $request->get_param( 'guest_email' ),
+				'guest_phone'           => $request->get_param( 'guest_phone' ) ?? '',
+				'guest_count'           => $guests,
+				'check_in'              => $check_in,
+				'check_out'             => $check_out,
+				'nights'                => $pricing['nights'],
+				'nightly_rate'          => $pricing['nightly_rate'],
+				'subtotal'              => $pricing['nightly_subtotal'],
+				'cleaning_fee'          => $pricing['cleaning_fee'],
+				'security_deposit'      => $pricing['security_deposit'],
+				'taxes'                 => $pricing['taxes'],
+				'total'                 => $total,
+				'los_discount'          => $pricing['los_discount'],
+				'stripe_payment_intent' => '',
+				'stripe_transfer_group' => '',
+				'special_requests'      => $request->get_param( 'special_requests' ) ?? '',
+				'daily_breakdown'       => wp_json_encode( $pricing['daily_breakdown'] ),
+			);
+
+			$booking_id = $this->booking_manager->create_booking( $booking_data );
+
+			if ( is_wp_error( $booking_id ) ) {
+				return new \WP_Error( $booking_id->get_error_code(), $booking_id->get_error_message(), array( 'status' => 500 ) );
+			}
+
+			update_post_meta( $booking_id, 'str_payment_plan', 'pay_in_full' );
+
+			$amount_cents = (int) round( $total * 100 );
+			$result       = ( new SquareHandler() )->create_payment( $amount_cents, $currency, $source_id, $booking_id );
+
+			if ( is_wp_error( $result ) ) {
+				wp_update_post( array( 'ID' => $booking_id, 'post_status' => 'cancelled' ) );
+				return new \WP_Error( $result->get_error_code(), $result->get_error_message(), array( 'status' => 402 ) );
+			}
+
+			update_post_meta( $booking_id, 'str_square_payment_id', $result['payment']['id'] ?? '' );
+			wp_update_post( array( 'ID' => $booking_id, 'post_status' => 'confirmed' ) );
+			do_action( 'str_booking_confirmed', $booking_id );
+
+			return new \WP_REST_Response(
+				array(
+					'booking_id' => $booking_id,
+					'success'    => true,
+					'total'      => $total,
+				),
+				201
+			);
+		}
+
+		// ── Stripe branch (unchanged) ──────────────────────────────────────────
+		$payment_plan = sanitize_text_field( $request->get_param( 'payment_plan' ) ?: 'pay_in_full' );
+
+		// Validate payment plan value
+		$valid_plans = array( 'pay_in_full', 'two_payment', 'four_payment' );
+		if ( ! in_array( $payment_plan, $valid_plans, true ) ) {
+			$payment_plan = 'pay_in_full';
+		}
+
+		$charge_amount = $total;
 
 		// For multi-payment plans, determine the deposit amount
 		$customer_id = null;
 		if ( 'two_payment' === $payment_plan ) {
-			$plan_mgr         = new PaymentPlanManager();
-			$two_deposit_pct  = (int) ( get_post_meta( $property_id, 'str_plan_two_deposit_pct', true ) ?: 50 );
-			$charge_amount    = round( $total * $two_deposit_pct / 100, 2 );
+			$two_deposit_pct = (int) ( get_post_meta( $property_id, 'str_plan_two_deposit_pct', true ) ?: 50 );
+			$charge_amount   = round( $total * $two_deposit_pct / 100, 2 );
 		} elseif ( 'four_payment' === $payment_plan ) {
-			$plan_mgr         = new PaymentPlanManager();
-			$deposit_param    = (float) ( $request->get_param( 'deposit_amount' ) ?: 0 );
-			$four_min_pct     = (int) ( get_post_meta( $property_id, 'str_plan_four_deposit_min_pct', true ) ?: 25 );
-			$min_deposit      = round( $total * $four_min_pct / 100, 2 );
-			$charge_amount    = ( $deposit_param >= $min_deposit ) ? round( $deposit_param, 2 ) : $min_deposit;
+			$deposit_param = (float) ( $request->get_param( 'deposit_amount' ) ?: 0 );
+			$four_min_pct  = (int) ( get_post_meta( $property_id, 'str_plan_four_deposit_min_pct', true ) ?: 25 );
+			$min_deposit   = round( $total * $four_min_pct / 100, 2 );
+			$charge_amount = ( $deposit_param >= $min_deposit ) ? round( $deposit_param, 2 ) : $min_deposit;
 		}
 
 		// For multi-payment plans, create a Stripe Customer so we can vault the payment method
@@ -339,11 +403,11 @@ class PublicAPI extends \WP_REST_Controller {
 		}
 
 		$response_data = array(
-			'booking_id'           => $booking_id,
-			'client_secret'        => $intent['client_secret'],
-			'total'                => $total,
-			'payment_plan'         => $payment_plan,
-			'charge_amount'        => $charge_amount,
+			'booking_id'    => $booking_id,
+			'client_secret' => $intent['client_secret'],
+			'total'         => $total,
+			'payment_plan'  => $payment_plan,
+			'charge_amount' => $charge_amount,
 		);
 
 		if ( ! empty( $installment_schedule ) ) {
