@@ -185,12 +185,21 @@ class BookingManager {
 
 		$success = ! is_wp_error( $result ) && $result > 0;
 
-		if ( $success && in_array( $status, array( 'cancelled', 'refunded' ), true ) ) {
+		if ( $success ) {
 			$property_id = (int) get_post_meta( $id, 'str_property_id', true );
 			$check_in    = get_post_meta( $id, 'str_check_in', true );
 			$check_out   = get_post_meta( $id, 'str_check_out', true );
+
 			if ( $property_id && $check_in && $check_out ) {
-				$this->mark_dates_available( $property_id, $check_in, $check_out );
+				if ( 'confirmed' === $status ) {
+					// Ensure the availability table is always populated when a booking is
+					// confirmed — regardless of whether finalize_booking or the Stripe
+					// webhook triggered the transition. mark_dates_booked uses REPLACE INTO
+					// so calling it multiple times is safe.
+					$this->mark_dates_booked( $property_id, $check_in, $check_out, $id );
+				} elseif ( in_array( $status, array( 'cancelled', 'refunded' ), true ) ) {
+					$this->mark_dates_available( $property_id, $check_in, $check_out );
+				}
 			}
 		}
 
