@@ -181,7 +181,7 @@ class BookingWidget {
 				'name'         => get_the_title( $property_id ),
 				'maxGuests'    => (int) get_post_meta( $property_id, 'str_max_guests', true ),
 				'minNights'    => (int) get_post_meta( $property_id, 'str_min_nights', true ) ?: 1,
-				'maxNights'    => (int) get_post_meta( $property_id, 'str_max_nights', true ) ?: 365,
+				'maxNights'    => (int) get_post_meta( $property_id, 'str_max_nights', true ), // 0 = no limit
 				'checkInTime'  => get_post_meta( $property_id, 'str_check_in_time', true ) ?: '15:00',
 				'checkOutTime' => get_post_meta( $property_id, 'str_check_out_time', true ) ?: '11:00',
 				'planConfig'   => $plan_manager->get_plan_config( $property_id ),

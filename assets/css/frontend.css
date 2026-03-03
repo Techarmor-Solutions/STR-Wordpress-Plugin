@@ -406,3 +406,205 @@
 	border-radius: 3px;
 	display: inline-block;
 }
+
+/* ── Booking Date Range Calendar ─────────────────────────────────────────── */
+/* All rules scoped under .str-booking-widget to beat theme overrides. */
+
+.str-booking-widget .str-date-range-bar {
+	display: flex;
+	flex-direction: row;
+	border: 1.5px solid #e2e8f0;
+	border-radius: 8px;
+	margin-bottom: 16px;
+	overflow: hidden;
+}
+
+.str-booking-widget .str-date-range-item {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	padding: 12px 16px;
+}
+
+.str-booking-widget .str-date-range-item.is-active {
+	border-bottom: 2px solid #1a1a2e;
+}
+
+.str-booking-widget .str-date-range-label {
+	display: block;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #94a3b8;
+	margin-bottom: 2px;
+}
+
+.str-booking-widget .str-date-range-value {
+	display: block;
+	font-size: 15px;
+	font-weight: 600;
+	color: #1a1a2e;
+}
+
+.str-booking-widget .str-date-range-sep {
+	align-self: center;
+	padding: 0 8px;
+	color: #94a3b8;
+}
+
+.str-booking-widget .str-cal-hint {
+	font-size: 13px;
+	color: #64748b;
+	font-style: italic;
+	margin-bottom: 12px;
+}
+
+.str-booking-widget .str-bk-calendar {
+	border: 1.5px solid #e2e8f0;
+	border-radius: 10px;
+	overflow: hidden;
+	margin-bottom: 20px;
+}
+
+.str-booking-widget .str-bk-cal-header {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	padding: 12px 16px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.str-booking-widget .str-bk-cal-nav-btn {
+	background: none;
+	border: 1.5px solid #d1d5db;
+	border-radius: 4px;
+	padding: 4px 10px;
+	cursor: pointer;
+	font-size: 16px;
+	color: #374151;
+	line-height: 1;
+}
+
+.str-booking-widget .str-bk-cal-nav-btn:hover {
+	background: #f1f5f9;
+}
+
+.str-booking-widget .str-bk-cal-title {
+	font-weight: 600;
+	font-size: 15px;
+}
+
+.str-booking-widget .str-bk-cal-grid {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 0;
+	padding: 8px 4px;
+}
+
+.str-booking-widget .str-bk-cal-dow {
+	display: block;
+	text-align: center;
+	font-size: 11px;
+	font-weight: 600;
+	color: #94a3b8;
+	padding: 8px 0;
+}
+
+.str-booking-widget .str-bk-cal-day {
+	display: block;
+	text-align: center;
+	padding: 9px 4px;
+	font-size: 14px;
+	cursor: pointer;
+	user-select: none;
+	border-radius: 0;
+	transition: background 0.1s;
+}
+
+.str-booking-widget .str-bk-cal-day--empty {
+	cursor: default;
+	visibility: hidden;
+}
+
+.str-booking-widget .str-bk-cal-day--past {
+	color: #cbd5e1;
+	cursor: default;
+}
+
+.str-booking-widget .str-bk-cal-day--today {
+	font-weight: 700;
+	text-decoration: underline;
+	text-decoration-color: #1a1a2e;
+}
+
+.str-booking-widget .str-bk-cal-day--blocked {
+	color: #fca5a5;
+	text-decoration: line-through;
+	cursor: not-allowed;
+}
+
+.str-booking-widget .str-bk-cal-day--invalid {
+	color: #d1d5db;
+	cursor: not-allowed;
+}
+
+.str-booking-widget .str-bk-cal-day--in-range {
+	background: rgba(26, 26, 46, 0.08);
+	border-radius: 0;
+}
+
+.str-booking-widget .str-bk-cal-day--range-start {
+	background: #1a1a2e;
+	color: #fff;
+	border-radius: 6px 0 0 6px;
+}
+
+.str-booking-widget .str-bk-cal-day--range-end {
+	background: #1a1a2e;
+	color: #fff;
+	border-radius: 0 6px 6px 0;
+}
+
+.str-booking-widget .str-bk-cal-day--range-start.str-bk-cal-day--range-end {
+	border-radius: 6px;
+}
+
+.str-booking-widget .str-bk-cal-day--hover-preview {
+	background: #374151;
+	color: #fff;
+	border-radius: 0 6px 6px 0;
+}
+
+.str-booking-widget .str-bk-cal-legend {
+	display: flex;
+	flex-direction: row;
+	gap: 16px;
+	margin-bottom: 16px;
+	font-size: 12px;
+	color: #64748b;
+}
+
+.str-booking-widget .str-bk-cal-legend-item {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+}
+
+.str-booking-widget .str-bk-cal-legend-dot {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.str-booking-widget .str-bk-cal-legend-dot--available {
+	background: rgba(26, 26, 46, 0.15);
+	border: 1.5px solid #1a1a2e;
+}
+
+.str-booking-widget .str-bk-cal-legend-dot--blocked {
+	background: #fca5a5;
+}

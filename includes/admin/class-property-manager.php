@@ -489,9 +489,9 @@ class PropertyManager {
 			return;
 		}
 
-		$number_fields  = array( 'str_nightly_rate', 'str_cleaning_fee', 'str_security_deposit', 'str_max_guests', 'str_min_nights', 'str_max_nights', 'str_tax_rate' );
+		$number_fields  = array( 'str_nightly_rate', 'str_cleaning_fee', 'str_security_deposit', 'str_tax_rate' );
 		$text_fields    = array( 'str_check_in_time', 'str_check_out_time', 'str_address', 'str_door_code', 'str_wifi_password', 'str_host_phone', 'str_los_discounts' );
-		$integer_fields = array( 'str_plan_two_deposit_pct', 'str_plan_two_days_before', 'str_plan_four_deposit_min_pct' );
+		$integer_fields = array( 'str_min_nights', 'str_max_nights', 'str_max_guests', 'str_plan_two_deposit_pct', 'str_plan_two_days_before', 'str_plan_four_deposit_min_pct' );
 		$boolean_fields = array( 'str_plan_full_enabled', 'str_plan_two_enabled', 'str_plan_four_enabled' );
 
 		foreach ( $number_fields as $key ) {
