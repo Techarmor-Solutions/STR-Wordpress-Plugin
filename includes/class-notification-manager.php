@@ -392,7 +392,7 @@ class NotificationManager {
 			'{check_out_date}'       => esc_html( date_i18n( get_option( 'date_format' ), strtotime( $booking['check_out'] ) ) ),
 			'{check_in_time}'        => esc_html( get_post_meta( $property_id, 'str_check_in_time', true ) ?: '3:00 PM' ),
 			'{check_out_time}'       => esc_html( get_post_meta( $property_id, 'str_check_out_time', true ) ?: '11:00 AM' ),
-			'{door_code}'            => esc_html( get_post_meta( $property_id, 'str_door_code', true ) ),
+			'{door_code}'            => esc_html( $this->resolve_door_code( $property_id, $booking ) ),
 			'{wifi_password}'        => esc_html( get_post_meta( $property_id, 'str_wifi_password', true ) ),
 			'{host_phone}'           => esc_html( get_post_meta( $property_id, 'str_host_phone', true ) ),
 			'{address}'              => esc_html( get_post_meta( $property_id, 'str_address', true ) ),
@@ -406,6 +406,28 @@ class NotificationManager {
 		);
 
 		return str_replace( array_keys( $replacements ), array_values( $replacements ), $template );
+	}
+
+	/**
+	 * Resolve the door code for a booking.
+	 *
+	 * If the property is configured to use the last 4 digits of the guest's
+	 * phone number, strip non-digits and return the last 4; otherwise return
+	 * the manually-set door code.
+	 *
+	 * @param int   $property_id Property post ID.
+	 * @param array $booking     Booking data array.
+	 * @return string
+	 */
+	private function resolve_door_code( int $property_id, array $booking ): string {
+		if ( get_post_meta( $property_id, 'str_door_code_use_phone', true ) ) {
+			$phone  = $booking['guest_phone'] ?? '';
+			$digits = preg_replace( '/\D/', '', $phone );
+			if ( strlen( $digits ) >= 4 ) {
+				return substr( $digits, -4 );
+			}
+		}
+		return get_post_meta( $property_id, 'str_door_code', true );
 	}
 
 	/**

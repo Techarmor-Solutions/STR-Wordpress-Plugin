@@ -608,6 +608,8 @@ class PublicAPI extends \WP_REST_Controller {
 			)
 		);
 
+		$buffer_days = (int) get_post_meta( $property_id, 'str_turnover_buffer', true );
+
 		foreach ( $confirmed_bookings as $bid ) {
 			$check_in  = get_post_meta( $bid, 'str_check_in', true );
 			$check_out = get_post_meta( $bid, 'str_check_out', true );
@@ -632,6 +634,28 @@ class PublicAPI extends \WP_REST_Controller {
 				}
 
 				$current->modify( '+1 day' );
+			}
+
+			// Mark turnover buffer days after checkout as unavailable.
+			if ( $buffer_days > 0 ) {
+				$buf_current = new \DateTime( $check_out );
+				$buf_end     = new \DateTime( $check_out );
+				$buf_end->modify( "+{$buffer_days} days" );
+
+				while ( $buf_current < $buf_end ) {
+					$date_str = $buf_current->format( 'Y-m-d' );
+
+					if ( $date_str >= $start && $date_str < $end ) {
+						if ( ! isset( $date_map[ $date_str ] ) || 'available' === $date_map[ $date_str ]['status'] ) {
+							$date_map[ $date_str ] = array(
+								'date'   => $date_str,
+								'status' => 'booked',
+							);
+						}
+					}
+
+					$buf_current->modify( '+1 day' );
+				}
 			}
 		}
 
@@ -699,6 +723,8 @@ class PublicAPI extends \WP_REST_Controller {
 			)
 		);
 
+		$buffer_days = (int) get_post_meta( $property_id, 'str_turnover_buffer', true );
+
 		foreach ( $confirmed_bookings as $bid ) {
 			$check_in  = get_post_meta( $bid, 'str_check_in', true );
 			$check_out = get_post_meta( $bid, 'str_check_out', true );
@@ -726,6 +752,30 @@ class PublicAPI extends \WP_REST_Controller {
 				}
 
 				$current->modify( '+1 day' );
+			}
+
+			// Mark turnover buffer days after checkout as unavailable.
+			if ( $buffer_days > 0 ) {
+				$buf_current = new \DateTime( $check_out );
+				$buf_end     = new \DateTime( $check_out );
+				$buf_end->modify( "+{$buffer_days} days" );
+
+				while ( $buf_current < $buf_end ) {
+					$date_str = $buf_current->format( 'Y-m-d' );
+
+					if ( $date_str >= $start && $date_str < $end ) {
+						if ( ! isset( $date_map[ $date_str ] ) || 'available' === $date_map[ $date_str ]['status'] ) {
+							$date_map[ $date_str ] = array(
+								'date'           => $date_str,
+								'status'         => 'booked',
+								'price_override' => null,
+								'booking_id'     => null,
+							);
+						}
+					}
+
+					$buf_current->modify( '+1 day' );
+				}
 			}
 		}
 

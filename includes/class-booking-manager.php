@@ -285,7 +285,45 @@ class BookingManager {
 		// Also check overlapping confirmed bookings
 		$overlapping = $this->get_bookings_for_property( $property_id, $checkin, $checkout );
 
-		return empty( $overlapping );
+		if ( ! empty( $overlapping ) ) {
+			return false;
+		}
+
+		// Check turnover buffer: ensure the gap between this booking and any
+		// adjacent confirmed booking meets the property's required buffer days.
+		$buffer_days = (int) get_post_meta( $property_id, 'str_turnover_buffer', true );
+
+		if ( $buffer_days > 0 ) {
+			// Query slightly beyond the requested window to catch bookings that
+			// don't overlap but are within the buffer zone on either side.
+			$extended_start = date( 'Y-m-d', strtotime( "$checkin -" . ( $buffer_days + 1 ) . ' days' ) );
+			$extended_end   = date( 'Y-m-d', strtotime( "$checkout +" . ( $buffer_days + 1 ) . ' days' ) );
+
+			$nearby = $this->get_bookings_for_property( $property_id, $extended_start, $extended_end );
+
+			foreach ( $nearby as $b ) {
+				$b_checkin  = $b['check_in'];
+				$b_checkout = $b['check_out'];
+
+				// Existing booking ends within the buffer window before our check-in.
+				if ( $b_checkout <= $checkin ) {
+					$gap = ( strtotime( $checkin ) - strtotime( $b_checkout ) ) / DAY_IN_SECONDS;
+					if ( $gap < $buffer_days ) {
+						return false;
+					}
+				}
+
+				// Our checkout leaves insufficient buffer before an existing booking's check-in.
+				if ( $b_checkin >= $checkout ) {
+					$gap = ( strtotime( $b_checkin ) - strtotime( $checkout ) ) / DAY_IN_SECONDS;
+					if ( $gap < $buffer_days ) {
+						return false;
+					}
+				}
+			}
+		}
+
+		return true;
 	}
 
 	/**

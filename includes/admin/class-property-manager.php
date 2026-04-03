@@ -30,6 +30,10 @@ class PropertyManager {
 		add_filter( 'views_edit-str_booking', array( $this, 'booking_status_views' ) );
 		add_action( 'admin_notices', array( $this, 'pending_bookings_notice' ) );
 		add_action( 'wp_ajax_str_update_booking_status', array( $this, 'handle_booking_status_ajax' ) );
+		// Booking list columns and property filter
+		add_filter( 'manage_str_booking_posts_columns', array( $this, 'add_booking_list_columns' ) );
+		add_action( 'manage_str_booking_posts_custom_column', array( $this, 'render_booking_list_column' ), 10, 2 );
+		add_action( 'restrict_manage_posts', array( $this, 'add_booking_property_filter' ) );
 	}
 
 	/**
@@ -258,10 +262,10 @@ class PropertyManager {
 			'str_max_guests'       => array( 'label' => 'Max Guests', 'type' => 'number', 'step' => '1' ),
 			'str_min_nights'       => array( 'label' => 'Min Nights', 'type' => 'number', 'step' => '1' ),
 			'str_max_nights'       => array( 'label' => 'Max Nights', 'type' => 'number', 'step' => '1' ),
+			'str_turnover_buffer'  => array( 'label' => 'Turnover Buffer (days)', 'type' => 'number', 'step' => '1' ),
 			'str_check_in_time'    => array( 'label' => 'Check-in Time', 'type' => 'time' ),
 			'str_check_out_time'   => array( 'label' => 'Check-out Time', 'type' => 'time' ),
 			'str_address'          => array( 'label' => 'Address', 'type' => 'text' ),
-			'str_door_code'        => array( 'label' => 'Door Code', 'type' => 'text' ),
 			'str_wifi_password'    => array( 'label' => 'WiFi Password', 'type' => 'text' ),
 			'str_host_phone'       => array( 'label' => 'Host Phone', 'type' => 'text' ),
 			'str_tax_rate'         => array( 'label' => 'Tax Rate (0.00–1.00)', 'type' => 'number', 'step' => '0.001' ),
@@ -279,6 +283,26 @@ class PropertyManager {
 				esc_attr( $field['step'] ?? '' )
 			);
 		}
+
+		// Door Code (custom row with phone-last-4 option)
+		$door_code_value     = get_post_meta( $post->ID, 'str_door_code', true );
+		$use_phone_last4     = (bool) get_post_meta( $post->ID, 'str_door_code_use_phone', true );
+		echo '<tr>';
+		echo '<th><label for="str_door_code">' . esc_html__( 'Door Code', 'str-direct-booking' ) . '</label></th>';
+		echo '<td>';
+		printf(
+			'<input type="text" id="str_door_code" name="str_door_code" value="%s" class="regular-text" %s />',
+			esc_attr( $door_code_value ),
+			$use_phone_last4 ? 'disabled' : ''
+		);
+		printf(
+			'<label style="margin-left:12px"><input type="checkbox" id="str_door_code_use_phone" name="str_door_code_use_phone" value="1" %s onchange="document.getElementById(\'str_door_code\').disabled=this.checked" /> %s</label>',
+			checked( $use_phone_last4, true, false ),
+			esc_html__( 'Use last 4 digits of guest\'s phone number', 'str-direct-booking' )
+		);
+		echo '<p class="description">' . esc_html__( 'When checked, the door code sent in notifications will be the last 4 digits of the guest\'s phone number.', 'str-direct-booking' ) . '</p>';
+		echo '</td>';
+		echo '</tr>';
 
 		// LOS Discounts textarea
 		$los = get_post_meta( $post->ID, 'str_los_discounts', true );
@@ -491,8 +515,8 @@ class PropertyManager {
 
 		$number_fields  = array( 'str_nightly_rate', 'str_cleaning_fee', 'str_security_deposit', 'str_tax_rate' );
 		$text_fields    = array( 'str_check_in_time', 'str_check_out_time', 'str_address', 'str_door_code', 'str_wifi_password', 'str_host_phone', 'str_los_discounts' );
-		$integer_fields = array( 'str_min_nights', 'str_max_nights', 'str_max_guests', 'str_plan_two_deposit_pct', 'str_plan_two_days_before', 'str_plan_four_deposit_min_pct' );
-		$boolean_fields = array( 'str_plan_full_enabled', 'str_plan_two_enabled', 'str_plan_four_enabled' );
+		$integer_fields = array( 'str_min_nights', 'str_max_nights', 'str_max_guests', 'str_plan_two_deposit_pct', 'str_plan_two_days_before', 'str_plan_four_deposit_min_pct', 'str_turnover_buffer' );
+		$boolean_fields = array( 'str_plan_full_enabled', 'str_plan_two_enabled', 'str_plan_four_enabled', 'str_door_code_use_phone' );
 
 		foreach ( $number_fields as $key ) {
 			if ( isset( $_POST[ $key ] ) ) {
@@ -551,6 +575,20 @@ class PropertyManager {
 				array( 'pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'refunded' )
 			);
 		}
+
+		// Apply property filter when selected
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$filter_property = isset( $_GET['str_filter_property'] ) ? absint( $_GET['str_filter_property'] ) : 0;
+		if ( $filter_property > 0 ) {
+			$existing   = $query->get( 'meta_query' ) ?: array();
+			$existing[] = array(
+				'key'     => 'str_property_id',
+				'value'   => $filter_property,
+				'type'    => 'NUMERIC',
+				'compare' => '=',
+			);
+			$query->set( 'meta_query', $existing );
+		}
 	}
 
 	/**
@@ -592,6 +630,115 @@ class PropertyManager {
 		}
 
 		return $views;
+	}
+
+	/**
+	 * Add custom columns to the bookings list table.
+	 *
+	 * @param array $columns Existing columns.
+	 * @return array Modified columns.
+	 */
+	public function add_booking_list_columns( array $columns ): array {
+		$new = array();
+		foreach ( $columns as $key => $label ) {
+			$new[ $key ] = $label;
+			// Insert custom columns after the title column
+			if ( 'title' === $key ) {
+				$new['str_property']  = __( 'Property', 'str-direct-booking' );
+				$new['str_guest']     = __( 'Guest', 'str-direct-booking' );
+				$new['str_check_in']  = __( 'Check-in', 'str-direct-booking' );
+				$new['str_check_out'] = __( 'Check-out', 'str-direct-booking' );
+				$new['str_total']     = __( 'Total', 'str-direct-booking' );
+			}
+		}
+		return $new;
+	}
+
+	/**
+	 * Render custom column values in the bookings list table.
+	 *
+	 * @param string $column  Column key.
+	 * @param int    $post_id Post ID.
+	 */
+	public function render_booking_list_column( string $column, int $post_id ): void {
+		switch ( $column ) {
+			case 'str_property':
+				$property_id = (int) get_post_meta( $post_id, 'str_property_id', true );
+				if ( $property_id ) {
+					$title = get_the_title( $property_id );
+					$url   = admin_url( 'edit.php?post_type=str_booking&str_filter_property=' . $property_id );
+					printf( '<a href="%s">%s</a>', esc_url( $url ), esc_html( $title ?: "#{$property_id}" ) );
+				} else {
+					echo '—';
+				}
+				break;
+
+			case 'str_guest':
+				$name  = get_post_meta( $post_id, 'str_guest_name', true );
+				$email = get_post_meta( $post_id, 'str_guest_email', true );
+				echo esc_html( $name );
+				if ( $email ) {
+					echo '<br><small>' . esc_html( $email ) . '</small>';
+				}
+				break;
+
+			case 'str_check_in':
+				$date = get_post_meta( $post_id, 'str_check_in', true );
+				echo $date ? esc_html( date_i18n( get_option( 'date_format' ), strtotime( $date ) ) ) : '—';
+				break;
+
+			case 'str_check_out':
+				$date = get_post_meta( $post_id, 'str_check_out', true );
+				echo $date ? esc_html( date_i18n( get_option( 'date_format' ), strtotime( $date ) ) ) : '—';
+				break;
+
+			case 'str_total':
+				$total    = (float) get_post_meta( $post_id, 'str_total', true );
+				$currency = strtoupper( get_option( 'str_booking_currency', 'USD' ) );
+				echo esc_html( $currency . ' ' . number_format( $total, 2 ) );
+				break;
+		}
+	}
+
+	/**
+	 * Render a property filter dropdown above the bookings list table.
+	 *
+	 * @param string $post_type Current post type.
+	 */
+	public function add_booking_property_filter( string $post_type ): void {
+		if ( 'str_booking' !== $post_type ) {
+			return;
+		}
+
+		$properties = get_posts(
+			array(
+				'post_type'      => 'str_property',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+				'fields'         => 'ids',
+			)
+		);
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$selected = isset( $_GET['str_filter_property'] ) ? absint( $_GET['str_filter_property'] ) : 0;
+
+		echo '<select name="str_filter_property" id="str_filter_property">';
+		printf(
+			'<option value="0"%s>%s</option>',
+			selected( $selected, 0, false ),
+			esc_html__( 'All Properties', 'str-direct-booking' )
+		);
+		foreach ( $properties as $pid ) {
+			printf(
+				'<option value="%d"%s>%s</option>',
+				$pid,
+				selected( $selected, $pid, false ),
+				esc_html( get_the_title( $pid ) )
+			);
+		}
+		echo '</select>';
 	}
 
 	/**
