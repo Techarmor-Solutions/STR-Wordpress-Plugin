@@ -2,13 +2,8 @@
 /**
  * License Server Configuration
  *
- * Secrets are read from environment variables set in Hostinger hPanel.
- * Never hardcode secrets in this file.
- *
- * Required environment variables:
- *   LICENSE_HMAC_SECRET      — 64-char hex, generate with: php -r "echo bin2hex(random_bytes(32));"
- *   LICENSE_ADMIN_USERNAME   — admin panel username
- *   LICENSE_ADMIN_PASSWORD_HASH — bcrypt hash, generate with: php -r "echo password_hash('yourpassword', PASSWORD_BCRYPT);"
+ * Secrets are stored in secrets.php on the server (never in git).
+ * Copy secrets.example.php to secrets.php and fill in the values.
  */
 
 if ( ! defined( 'LICENSE_SERVER' ) ) {
@@ -16,25 +11,27 @@ if ( ! defined( 'LICENSE_SERVER' ) ) {
 	exit;
 }
 
+// Load secrets from server-only file
+$secrets_file = __DIR__ . '/secrets.php';
+if ( file_exists( $secrets_file ) ) {
+	require_once $secrets_file;
+}
+
 // ── Database ──────────────────────────────────────────────────────────────────
 define( 'DB_PATH', __DIR__ . '/data/licenses.sqlite' );
 
-// ── Environment variable helper ───────────────────────────────────────────────
-// Checks getenv(), $_ENV, and $_SERVER to cover all Hostinger hosting setups.
-function _license_env( string $key, string $default = '' ): string {
-	$val = getenv( $key );
-	if ( $val !== false && $val !== '' ) return $val;
-	if ( isset( $_ENV[ $key ] ) && $_ENV[ $key ] !== '' ) return $_ENV[ $key ];
-	if ( isset( $_SERVER[ $key ] ) && $_SERVER[ $key ] !== '' ) return $_SERVER[ $key ];
-	return $default;
+// ── HMAC Secret ───────────────────────────────────────────────────────────────
+if ( ! defined( 'HMAC_SECRET' ) ) {
+	define( 'HMAC_SECRET', '' );
 }
 
-// ── HMAC Secret ───────────────────────────────────────────────────────────────
-define( 'HMAC_SECRET', _license_env( 'LICENSE_HMAC_SECRET' ) );
-
 // ── Admin Credentials ─────────────────────────────────────────────────────────
-define( 'ADMIN_USERNAME', _license_env( 'LICENSE_ADMIN_USERNAME', 'admin' ) );
-define( 'ADMIN_PASSWORD_HASH', _license_env( 'LICENSE_ADMIN_PASSWORD_HASH' ) );
+if ( ! defined( 'ADMIN_USERNAME' ) ) {
+	define( 'ADMIN_USERNAME', 'admin' );
+}
+if ( ! defined( 'ADMIN_PASSWORD_HASH' ) ) {
+	define( 'ADMIN_PASSWORD_HASH', '' );
+}
 
 // ── Session ───────────────────────────────────────────────────────────────────
 define( 'SESSION_LIFETIME', 3600 * 8 ); // 8 hours
