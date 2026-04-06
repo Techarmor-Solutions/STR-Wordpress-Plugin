@@ -11,8 +11,8 @@ if ( ! defined( 'LICENSE_SERVER' ) ) {
 	exit;
 }
 
-// Load secrets from server-only file
-$secrets_file = __DIR__ . '/secrets.php';
+// Load secrets from outside the webroot (not touched by Git deployments)
+$secrets_file = dirname( __DIR__ ) . '/secrets.php';
 if ( file_exists( $secrets_file ) ) {
 	require_once $secrets_file;
 }
