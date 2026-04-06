@@ -1,0 +1,20 @@
+# Deny direct access to sensitive directories and files
+<FilesMatch "\.(sqlite|sqlite3|db)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Route /api/validate → api/validate.php
+    RewriteRule ^api/validate/?$ api/validate.php [L]
+    RewriteRule ^api/activate/?$ api/activate.php [L]
+    RewriteRule ^api/deactivate/?$ api/deactivate.php [L]
+</IfModule>
+
+# Deny access to config and data directory
+<Files "config.php">
+    Order allow,deny
+    Deny from all
+</Files>
