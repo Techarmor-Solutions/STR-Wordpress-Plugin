@@ -1,0 +1,13 @@
+{
+    "name": "techarmor/str-license-server",
+    "description": "STR Direct Booking License Server",
+    "type": "project",
+    "require": {
+        "php": ">=8.0"
+    },
+    "config": {
+        "platform": {
+            "php": "8.0"
+        }
+    }
+}
