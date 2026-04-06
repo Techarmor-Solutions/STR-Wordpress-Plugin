@@ -1,5 +1,8 @@
 {
     "name": "str-license-server",
     "version": "1.0.0",
-    "description": "STR Direct Booking License Server"
+    "description": "STR Direct Booking License Server",
+    "scripts": {
+        "build": "echo 'No build step required'"
+    }
 }
