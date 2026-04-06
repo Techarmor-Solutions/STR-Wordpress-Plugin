@@ -23,7 +23,15 @@ class CalendarWidget {
 	 */
 	private static bool $enqueue_scripts = false;
 
-	public function __construct() {
+	/**
+	 * Whether the plugin has a valid license.
+	 *
+	 * @var bool
+	 */
+	private bool $licensed;
+
+	public function __construct( bool $licensed = true ) {
+		$this->licensed = $licensed;
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ), 10 );
 		add_action( 'init', array( $this, 'register_shortcode' ), 10 );
 	}
@@ -86,6 +94,10 @@ class CalendarWidget {
 	 * @return string HTML markup.
 	 */
 	public function render_shortcode( array $atts ): string {
+		if ( ! $this->licensed ) {
+			return '<!-- STR Booking: valid license required -->';
+		}
+
 		$atts = shortcode_atts(
 			array(
 				'property_id' => 0,

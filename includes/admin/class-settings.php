@@ -7,6 +7,8 @@
 
 namespace STRBooking\Admin;
 
+use STRBooking\LicenseManager;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -16,11 +18,19 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Settings {
 
-	public function __construct() {
+	/**
+	 * @var LicenseManager
+	 */
+	private LicenseManager $license_manager;
+
+	public function __construct( LicenseManager $license_manager ) {
+		$this->license_manager = $license_manager;
 		add_action( 'admin_init', array( $this, 'register_settings' ), 10 );
 		add_action( 'admin_notices', array( $this, 'show_webhook_notice' ) );
 		add_action( 'admin_head', array( $this, 'output_gateway_styles' ) );
 		add_action( 'admin_footer', array( $this, 'output_gateway_script' ) );
+		add_action( 'admin_post_str_validate_license', array( $this, 'handle_license_save' ) );
+		add_action( 'admin_post_str_deactivate_license', array( $this, 'handle_license_deactivate' ) );
 	}
 
 	/**
@@ -44,6 +54,14 @@ class Settings {
 	 * Register all plugin settings.
 	 */
 	public function register_settings(): void {
+		// License section — appears at the very top of the settings page.
+		add_settings_section(
+			'str_booking_license',
+			'',
+			array( $this, 'render_license_section' ),
+			'str-booking-settings'
+		);
+
 		// Register gateway settings first so they appear at the top
 		$this->register_gateway_settings();
 
@@ -292,6 +310,167 @@ class Settings {
 				'description' => __( 'Required only for private repositories. Leave blank for public repos. Generate at GitHub → Settings → Developer Settings → Personal Access Tokens.', 'str-direct-booking' ),
 			)
 		);
+	}
+
+	/**
+	 * Render the license section at the top of the settings page.
+	 */
+	public function render_license_section(): void {
+		$info       = $this->license_manager->get_status_info();
+		$stored_key = $this->license_manager->get_stored_key();
+		$status     = $info['status'];
+
+		$badge_colors = array(
+			'active'  => '#00a32a',
+			'grace'   => '#b5830e',
+			'missing' => '#646970',
+			'default' => '#d63638',
+		);
+		$badge_color = $badge_colors[ $status ] ?? $badge_colors['default'];
+
+		$badge_labels = array(
+			'active'       => __( 'Active', 'str-direct-booking' ),
+			'grace'        => __( 'Grace Period', 'str-direct-booking' ),
+			'missing'      => __( 'No License', 'str-direct-booking' ),
+			'invalid'      => __( 'Invalid', 'str-direct-booking' ),
+			'revoked'      => __( 'Revoked', 'str-direct-booking' ),
+			'expired'      => __( 'Expired', 'str-direct-booking' ),
+			'offline'      => __( 'Server Offline', 'str-direct-booking' ),
+			'unknown'      => __( 'Unknown', 'str-direct-booking' ),
+		);
+		$badge_label = $badge_labels[ $status ] ?? ucfirst( $status );
+
+		// Show result flash message from redirect.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( isset( $_GET['str_license_result'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$result = sanitize_text_field( wp_unslash( $_GET['str_license_result'] ) );
+			if ( 'valid' === $result ) {
+				echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'License activated successfully.', 'str-direct-booking' ) . '</p></div>';
+			} else {
+				$flash_msg = isset( $_GET['str_license_message'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+					? sanitize_text_field( wp_unslash( $_GET['str_license_message'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+					: __( 'License key is invalid or could not be verified.', 'str-direct-booking' );
+				printf( '<div class="notice notice-error is-dismissible"><p>%s</p></div>', esc_html( $flash_msg ) );
+			}
+		}
+
+		?>
+		<div id="str-license-section" style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:20px 24px;margin-bottom:20px;">
+			<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+				<h2 style="margin:0;"><?php esc_html_e( 'License', 'str-direct-booking' ); ?></h2>
+				<span style="background:<?php echo esc_attr( $badge_color ); ?>;color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:0.5px;">
+					<?php echo esc_html( $badge_label ); ?>
+				</span>
+				<?php if ( ! empty( $info['expires_at'] ) ) : ?>
+					<span style="color:#646970;font-size:13px;">
+						<?php
+						printf(
+							/* translators: %s: expiry date */
+							esc_html__( 'Expires: %s', 'str-direct-booking' ),
+							esc_html( $info['expires_at'] )
+						);
+						?>
+					</span>
+				<?php endif; ?>
+			</div>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="str_validate_license" />
+				<?php wp_nonce_field( 'str_validate_license_nonce', '_wpnonce_license' ); ?>
+
+				<table class="form-table" role="presentation" style="margin-top:0;">
+					<tbody>
+						<tr>
+							<th scope="row">
+								<label for="str_booking_license_key"><?php esc_html_e( 'License Key', 'str-direct-booking' ); ?></label>
+							</th>
+							<td>
+								<input
+									type="text"
+									id="str_booking_license_key"
+									name="str_booking_license_key"
+									value="<?php echo esc_attr( $stored_key ); ?>"
+									class="regular-text"
+									placeholder="STRDB-XXXX-XXXX-XXXX-XXXX"
+									style="font-family:monospace;"
+								/>
+								<p class="description"><?php esc_html_e( 'Enter the license key you received after purchase.', 'str-direct-booking' ); ?></p>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+
+				<p style="margin-top:12px;">
+					<?php submit_button( __( 'Activate License', 'str-direct-booking' ), 'primary', 'submit_license', false ); ?>
+
+					<?php if ( ! empty( $stored_key ) ) : ?>
+						&nbsp;
+						<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=str_deactivate_license' ), 'str_deactivate_license_nonce', '_wpnonce_deactivate' ) ); ?>"
+							style="color:#d63638;"
+							onclick="return confirm('<?php esc_attr_e( 'Deactivate this license? Booking features will be disabled.', 'str-direct-booking' ); ?>');">
+							<?php esc_html_e( 'Deactivate License', 'str-direct-booking' ); ?>
+						</a>
+					<?php endif; ?>
+				</p>
+			</form>
+
+			<?php if ( 'active' === $status && ! empty( $info['customer_name'] ) ) : ?>
+				<p style="margin:0;color:#646970;font-size:13px;">
+					<?php
+					printf(
+						/* translators: %s: customer name */
+						esc_html__( 'Licensed to: %s', 'str-direct-booking' ),
+						esc_html( $info['customer_name'] )
+					);
+					?>
+				</p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Handle license key activation form submission.
+	 */
+	public function handle_license_save(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized.', 'str-direct-booking' ) );
+		}
+
+		check_admin_referer( 'str_validate_license_nonce', '_wpnonce_license' );
+
+		$key    = isset( $_POST['str_booking_license_key'] ) ? sanitize_text_field( wp_unslash( $_POST['str_booking_license_key'] ) ) : '';
+		$result = $this->license_manager->activate( $key );
+
+		$redirect = admin_url( 'admin.php?page=str-booking-settings' );
+
+		if ( $result['valid'] ) {
+			wp_safe_redirect( add_query_arg( 'str_license_result', 'valid', $redirect ) );
+		} else {
+			wp_safe_redirect( add_query_arg( array(
+				'str_license_result'  => 'invalid',
+				'str_license_message' => urlencode( $result['message'] ?? '' ),
+			), $redirect ) );
+		}
+
+		exit;
+	}
+
+	/**
+	 * Handle license deactivation request.
+	 */
+	public function handle_license_deactivate(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized.', 'str-direct-booking' ) );
+		}
+
+		check_admin_referer( 'str_deactivate_license_nonce', '_wpnonce_deactivate' );
+
+		$this->license_manager->deactivate();
+
+		wp_safe_redirect( admin_url( 'admin.php?page=str-booking-settings' ) );
+		exit;
 	}
 
 	/**

@@ -18,6 +18,7 @@ use STRBooking\Admin\Settings;
 use STRBooking\Frontend\BookingWidget;
 use STRBooking\Frontend\CalendarWidget;
 use STRBooking\Frontend\PublicAPI;
+use STRBooking\LicenseManager;
 use STRBooking\PluginUpdater;
 use STRBooking\SquareHandler;
 
@@ -123,6 +124,11 @@ class STRBooking {
 	public SquareHandler $square_handler;
 
 	/**
+	 * @var LicenseManager
+	 */
+	public LicenseManager $license_manager;
+
+	/**
 	 * Get or create singleton instance.
 	 *
 	 * @return static
@@ -139,6 +145,9 @@ class STRBooking {
 	 * Private constructor — instantiates all managers.
 	 */
 	private function __construct() {
+		$this->license_manager        = new LicenseManager();
+		$licensed                     = $this->license_manager->is_valid();
+
 		$this->booking_manager        = new BookingManager();
 		$this->pricing_engine         = new PricingEngine();
 		$this->cohost_manager         = new CohostManager();
@@ -147,11 +156,11 @@ class STRBooking {
 		$this->calendar_sync          = new CalendarSync( $this->booking_manager );
 		$this->notification_manager   = new NotificationManager();
 		$this->property_manager       = new PropertyManager();
-		$this->public_api             = new PublicAPI( $this->booking_manager, $this->pricing_engine, $this->payment_handler );
-		$this->booking_widget         = new BookingWidget();
-		$this->calendar_widget        = new CalendarWidget();
+		$this->public_api             = new PublicAPI( $this->booking_manager, $this->pricing_engine, $this->payment_handler, $licensed );
+		$this->booking_widget         = new BookingWidget( $licensed );
+		$this->calendar_widget        = new CalendarWidget( $licensed );
 		$this->admin_dashboard        = new AdminDashboard( $this->booking_manager );
-		$this->settings                = new Settings();
+		$this->settings                = new Settings( $this->license_manager );
 		$this->notification_settings   = new NotificationSettings();
 		$this->calendar_sync_settings  = new CalendarSyncSettings();
 		$this->plugin_updater          = new PluginUpdater( STR_BOOKING_PLUGIN_DIR . 'str-direct-booking.php' );
@@ -172,6 +181,11 @@ class STRBooking {
 			wp_schedule_event( time(), 'hourly', 'str_expire_pending_bookings' );
 		}
 
+		// Schedule daily license validation
+		if ( ! wp_next_scheduled( LicenseManager::CRON_HOOK ) ) {
+			wp_schedule_event( time(), 'daily', LicenseManager::CRON_HOOK );
+		}
+
 		// Flush rewrite rules for iCal endpoint and property slugs
 		flush_rewrite_rules();
 	}
@@ -183,6 +197,7 @@ class STRBooking {
 		// Clear scheduled cron jobs
 		wp_clear_scheduled_hook( 'str_calendar_sync_cron' );
 		wp_clear_scheduled_hook( 'str_expire_pending_bookings' );
+		wp_clear_scheduled_hook( LicenseManager::CRON_HOOK );
 
 		// Clear any pending notification hooks
 		wp_clear_scheduled_hook( 'str_send_notification' );

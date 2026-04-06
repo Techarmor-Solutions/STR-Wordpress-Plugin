@@ -44,10 +44,18 @@ class PublicAPI extends \WP_REST_Controller {
 	 */
 	private PaymentHandler $payment_handler;
 
-	public function __construct( BookingManager $booking_manager, PricingEngine $pricing_engine, PaymentHandler $payment_handler ) {
+	/**
+	 * Whether the plugin has a valid license.
+	 *
+	 * @var bool
+	 */
+	private bool $licensed;
+
+	public function __construct( BookingManager $booking_manager, PricingEngine $pricing_engine, PaymentHandler $payment_handler, bool $licensed = true ) {
 		$this->booking_manager = $booking_manager;
 		$this->pricing_engine  = $pricing_engine;
 		$this->payment_handler = $payment_handler;
+		$this->licensed        = $licensed;
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ), 10 );
 	}
@@ -89,14 +97,23 @@ class PublicAPI extends \WP_REST_Controller {
 			)
 		);
 
-		// POST /booking (rate-limited)
+		// POST /booking (rate-limited, license-gated)
 		register_rest_route(
 			$this->namespace,
 			'/booking',
 			array(
 				'methods'             => \WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'create_booking' ),
-				'permission_callback' => array( $this, 'check_booking_rate_limit' ),
+				'permission_callback' => function () {
+					if ( ! $this->licensed ) {
+						return new \WP_Error(
+							'str_license_invalid',
+							__( 'A valid license is required to accept bookings.', 'str-direct-booking' ),
+							array( 'status' => 403 )
+						);
+					}
+					return $this->check_booking_rate_limit();
+				},
 				'args'                => array(
 					'property_id'     => array( 'required' => true, 'type' => 'integer', 'minimum' => 1 ),
 					'check_in'        => array( 'required' => true, 'type' => 'string' ),
@@ -173,7 +190,16 @@ class PublicAPI extends \WP_REST_Controller {
 			array(
 				'methods'             => \WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'finalize_booking' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => function () {
+					if ( ! $this->licensed ) {
+						return new \WP_Error(
+							'str_license_invalid',
+							__( 'A valid license is required to accept bookings.', 'str-direct-booking' ),
+							array( 'status' => 403 )
+						);
+					}
+					return true;
+				},
 				'args'                => array(
 					'id'                 => array( 'required' => true, 'type' => 'integer', 'minimum' => 1 ),
 					'payment_intent_id'  => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),

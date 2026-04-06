@@ -19,9 +19,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'STR_BOOKING_VERSION', '1.0.5' );
 define( 'STR_BOOKING_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'STR_BOOKING_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'STR_BOOKING_DB_VERSION', '1.0.0' );
+define( 'STR_BOOKING_DB_VERSION', '1.1.0' );
 define( 'STR_BOOKING_GITHUB_USER', 'Techarmor-Solutions' );
 define( 'STR_BOOKING_GITHUB_REPO', 'STR-Wordpress-Plugin' );
+
+// License server — update STR_LICENSE_SERVER_URL to your deployment URL.
+// Generate STR_LICENSE_SERVER_SECRET with: bin2hex(random_bytes(32))
+// Both values must match the license-server/config.php on your server.
+define( 'STR_LICENSE_SERVER_URL', 'https://license.yourdomain.com/api' );
+define( 'STR_LICENSE_SERVER_SECRET', 'REPLACE_WITH_64_CHAR_HEX_FROM_BIN2HEX_RANDOM_BYTES_32' );
 
 // Load Composer autoloader
 if ( file_exists( STR_BOOKING_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
