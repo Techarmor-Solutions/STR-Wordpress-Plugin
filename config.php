@@ -19,12 +19,22 @@ if ( ! defined( 'LICENSE_SERVER' ) ) {
 // ── Database ──────────────────────────────────────────────────────────────────
 define( 'DB_PATH', __DIR__ . '/data/licenses.sqlite' );
 
+// ── Environment variable helper ───────────────────────────────────────────────
+// Checks getenv(), $_ENV, and $_SERVER to cover all Hostinger hosting setups.
+function _license_env( string $key, string $default = '' ): string {
+	$val = getenv( $key );
+	if ( $val !== false && $val !== '' ) return $val;
+	if ( isset( $_ENV[ $key ] ) && $_ENV[ $key ] !== '' ) return $_ENV[ $key ];
+	if ( isset( $_SERVER[ $key ] ) && $_SERVER[ $key ] !== '' ) return $_SERVER[ $key ];
+	return $default;
+}
+
 // ── HMAC Secret ───────────────────────────────────────────────────────────────
-define( 'HMAC_SECRET', getenv( 'LICENSE_HMAC_SECRET' ) ?: '' );
+define( 'HMAC_SECRET', _license_env( 'LICENSE_HMAC_SECRET' ) );
 
 // ── Admin Credentials ─────────────────────────────────────────────────────────
-define( 'ADMIN_USERNAME', getenv( 'LICENSE_ADMIN_USERNAME' ) ?: 'admin' );
-define( 'ADMIN_PASSWORD_HASH', getenv( 'LICENSE_ADMIN_PASSWORD_HASH' ) ?: '' );
+define( 'ADMIN_USERNAME', _license_env( 'LICENSE_ADMIN_USERNAME', 'admin' ) );
+define( 'ADMIN_PASSWORD_HASH', _license_env( 'LICENSE_ADMIN_PASSWORD_HASH' ) );
 
 // ── Session ───────────────────────────────────────────────────────────────────
 define( 'SESSION_LIFETIME', 3600 * 8 ); // 8 hours
