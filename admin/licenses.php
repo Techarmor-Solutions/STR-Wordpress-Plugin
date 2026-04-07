@@ -98,9 +98,11 @@ $flash = Auth::get_flash();
 				<tr>
 					<td><?= htmlspecialchars( $lic['customer_name'] ) ?></td>
 					<td><?= htmlspecialchars( $lic['customer_email'] ) ?></td>
-					<td style="font-family:monospace;font-size:13px;" title="<?= htmlspecialchars( $lic['license_key'] ) ?>">
-						<?= htmlspecialchars( LicenseKey::mask( $lic['license_key'] ) ) ?>
-						<button type="button" onclick="copyKey(this, '<?= htmlspecialchars( $lic['license_key'], ENT_QUOTES ) ?>')" style="background:none;border:none;cursor:pointer;color:#2271b1;font-size:12px;padding:0 4px;" title="Copy full key">⎘</button>
+					<td style="font-family:monospace;font-size:13px;white-space:nowrap;">
+						<span class="key-masked"><?= htmlspecialchars( LicenseKey::mask( $lic['license_key'] ) ) ?></span>
+						<span class="key-full" style="display:none;"><?= htmlspecialchars( $lic['license_key'] ) ?></span>
+						<button type="button" onclick="toggleKey(this)" style="background:none;border:none;cursor:pointer;color:#666;font-size:13px;padding:0 3px;" title="Show/hide full key">👁</button>
+						<button type="button" onclick="copyKey(this, '<?= htmlspecialchars( $lic['license_key'], ENT_QUOTES ) ?>')" style="background:none;border:none;cursor:pointer;color:#2271b1;font-size:13px;padding:0 3px;" title="Copy full key">⎘</button>
 					</td>
 					<td>
 						<?php
@@ -150,6 +152,21 @@ $flash = Auth::get_flash();
 </main>
 
 <script>
+function toggleKey(btn) {
+	var td = btn.parentElement;
+	var masked = td.querySelector('.key-masked');
+	var full   = td.querySelector('.key-full');
+	if ( full.style.display === 'none' ) {
+		masked.style.display = 'none';
+		full.style.display   = 'inline';
+		btn.title = 'Hide key';
+	} else {
+		full.style.display   = 'none';
+		masked.style.display = 'inline';
+		btn.title = 'Show full key';
+	}
+}
+
 function copyKey(btn, key) {
 	navigator.clipboard.writeText(key).then(() => {
 		var orig = btn.textContent;
