@@ -18,7 +18,8 @@ if ( file_exists( $secrets_file ) ) {
 }
 
 // ── Database ──────────────────────────────────────────────────────────────────
-define( 'DB_PATH', __DIR__ . '/data/licenses.sqlite' );
+// Stored outside public_html so Git deployments never wipe it.
+define( 'DB_PATH', dirname( __DIR__ ) . '/license-data/licenses.sqlite' );
 
 // ── HMAC Secret ───────────────────────────────────────────────────────────────
 if ( ! defined( 'HMAC_SECRET' ) ) {
