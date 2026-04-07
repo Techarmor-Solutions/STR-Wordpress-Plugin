@@ -25,7 +25,8 @@ h2 { font-size: 18px; margin: 0 0 12px; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
 .badge-active  { background: #e6f4ea; color: #137333; }
 .badge-revoked { background: #fce8e8; color: #a71d2a; }
-.badge-expired { background: #f0f0f0; color: #555; }
+.badge-expired  { background: #f0f0f0; color: #555; }
+.badge-archived { background: #e8e8f0; color: #6b6b8a; }
 .stats { display: flex; gap: 16px; flex-wrap: wrap; }
 .stat-card { background: #fff; border-radius: 8px; padding: 20px 24px; min-width: 140px; box-shadow: 0 1px 4px rgba(0,0,0,.08); border-left: 4px solid #2271b1; }
 .stat-green { border-color: #00a32a; }
