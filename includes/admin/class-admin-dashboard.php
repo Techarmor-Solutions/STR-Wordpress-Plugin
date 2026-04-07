@@ -100,6 +100,9 @@ class AdminDashboard {
 	public function render_settings_page(): void {
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'STR Booking Settings', 'str-direct-booking' ) . '</h1>';
+		// License section has its own form posting to admin-post.php,
+		// so it must be rendered outside the options.php form below.
+		do_action( 'str_render_license_section' );
 		echo '<form method="post" action="options.php">';
 		settings_fields( 'str_booking_settings' );
 		do_settings_sections( 'str-booking-settings' );

@@ -31,6 +31,7 @@ class Settings {
 		add_action( 'admin_footer', array( $this, 'output_gateway_script' ) );
 		add_action( 'admin_post_str_validate_license', array( $this, 'handle_license_save' ) );
 		add_action( 'admin_post_str_deactivate_license', array( $this, 'handle_license_deactivate' ) );
+		add_action( 'str_render_license_section', array( $this, 'render_license_section' ) );
 	}
 
 	/**
@@ -54,13 +55,8 @@ class Settings {
 	 * Register all plugin settings.
 	 */
 	public function register_settings(): void {
-		// License section — appears at the very top of the settings page.
-		add_settings_section(
-			'str_booking_license',
-			'',
-			array( $this, 'render_license_section' ),
-			'str-booking-settings'
-		);
+		// License section is rendered outside the main settings form via
+		// the str_render_license_section action (avoids nested <form> issue).
 
 		// Register gateway settings first so they appear at the top
 		$this->register_gateway_settings();
