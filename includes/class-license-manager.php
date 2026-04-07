@@ -40,12 +40,29 @@ class LicenseManager {
 			return in_array( $cached['status'], array( 'active', 'grace' ), true );
 		}
 
-		// No cache — run a synchronous check (first load after transient expires).
 		$key = $this->get_stored_key();
 		if ( empty( $key ) ) {
 			return false;
 		}
 
+		// Transient is missing (object-cache eviction, cache flush, etc.).
+		// Before hitting the server, check whether the last persisted status was
+		// active and recent enough to trust without a live round-trip.
+		$last_status = get_option( self::OPTION_STATUS, '' );
+		$last_check  = (int) get_option( self::OPTION_LAST_CHECK, 0 );
+
+		if ( 'active' === $last_status && ( time() - $last_check ) < self::GRACE_PERIOD_SECS ) {
+			// Re-populate transient so subsequent calls in this request are fast.
+			$this->set_cached_status( array(
+				'status'     => 'active',
+				'valid'      => true,
+				'message'    => 'License is active.',
+				'checked_at' => $last_check,
+			), 6 * HOUR_IN_SECONDS );
+			return true;
+		}
+
+		// No recent valid status on record — run a synchronous check.
 		$result = $this->validate_with_server( $key );
 		$this->store_result( $result );
 
