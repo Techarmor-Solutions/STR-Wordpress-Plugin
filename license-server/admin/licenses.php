@@ -100,7 +100,7 @@ $flash = Auth::get_flash();
 			<tbody>
 			<?php foreach ( $licenses as $lic ) : ?>
 				<tr>
-					<td><?= htmlspecialchars( $lic['customer_name'] ) ?></td>
+					<td><a href="license-detail.php?id=<?= (int) $lic['id'] ?>" style="color:#2271b1;text-decoration:none;font-weight:600;"><?= htmlspecialchars( $lic['customer_name'] ) ?></a></td>
 					<td><?= htmlspecialchars( $lic['customer_email'] ) ?></td>
 					<td style="font-family:monospace;font-size:13px;" title="<?= htmlspecialchars( $lic['license_key'] ) ?>">
 						<?= htmlspecialchars( LicenseKey::mask( $lic['license_key'] ) ) ?>
