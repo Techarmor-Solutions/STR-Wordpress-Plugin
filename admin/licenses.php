@@ -41,6 +41,21 @@ $rows_stmt = $db->prepare(
 $rows_stmt->execute( $params );
 $licenses = $rows_stmt->fetchAll();
 
+// Connection status thresholds.
+$disconnected_threshold = 3 * 24 * 60 * 60; // 3 days in seconds
+
+function get_connection_status( array $lic, int $threshold ): array {
+	if ( empty( $lic['last_seen_at'] ) ) {
+		return [ 'label' => 'Never Connected', 'class' => 'badge-never', 'title' => 'This license has not been activated on any site yet.' ];
+	}
+	$last_seen = strtotime( $lic['last_seen_at'] );
+	if ( ( time() - $last_seen ) > $threshold ) {
+		$days = round( ( time() - $last_seen ) / 86400 );
+		return [ 'label' => 'Disconnected', 'class' => 'badge-disconnected', 'title' => "Last seen {$days} day(s) ago. Site may have been removed or lost connection." ];
+	}
+	return [ 'label' => 'Connected', 'class' => 'badge-connected', 'title' => 'Site is actively checking in.' ];
+}
+
 $flash = Auth::get_flash();
 ?>
 <!DOCTYPE html>
@@ -50,6 +65,11 @@ $flash = Auth::get_flash();
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Licenses — <?= htmlspecialchars( PRODUCT_NAME ) ?></title>
 <?php require __DIR__ . '/partials/head.php'; ?>
+<style>
+.badge-never        { background: #94a3b8; color: #fff; }
+.badge-connected    { background: #16a34a; color: #fff; }
+.badge-disconnected { background: #f97316; color: #fff; }
+</style>
 </head>
 <body>
 <?php require __DIR__ . '/partials/nav.php'; ?>
@@ -86,8 +106,10 @@ $flash = Auth::get_flash();
 					<th>Customer</th>
 					<th>Email</th>
 					<th>License Key</th>
-					<th>Status</th>
+					<th>License Status</th>
+					<th>Connection</th>
 					<th>Site</th>
+					<th>Last Seen</th>
 					<th>Expires</th>
 					<th>Created</th>
 					<th>Actions</th>
@@ -95,6 +117,7 @@ $flash = Auth::get_flash();
 			</thead>
 			<tbody>
 			<?php foreach ( $licenses as $lic ) : ?>
+				<?php $conn = get_connection_status( $lic, $disconnected_threshold ); ?>
 				<tr>
 					<td><?= htmlspecialchars( $lic['customer_name'] ) ?></td>
 					<td><?= htmlspecialchars( $lic['customer_email'] ) ?></td>
@@ -114,7 +137,21 @@ $flash = Auth::get_flash();
 						?>
 						<span class="badge <?= $badge_class ?>"><?= htmlspecialchars( $lic['status'] ) ?></span>
 					</td>
+					<td>
+						<span class="badge <?= $conn['class'] ?>" title="<?= htmlspecialchars( $conn['title'] ) ?>">
+							<?= htmlspecialchars( $conn['label'] ) ?>
+						</span>
+					</td>
 					<td style="font-size:12px;color:#555;"><?= htmlspecialchars( $lic['site_url'] ?? '—' ) ?></td>
+					<td style="font-size:12px;color:#555;">
+						<?php if ( $lic['last_seen_at'] ) : ?>
+							<span title="<?= htmlspecialchars( $lic['last_seen_at'] ) ?>">
+								<?= htmlspecialchars( substr( $lic['last_seen_at'], 0, 10 ) ) ?>
+							</span>
+						<?php else : ?>
+							—
+						<?php endif; ?>
+					</td>
 					<td style="font-size:12px;"><?= htmlspecialchars( $lic['expires_at'] ?? 'Lifetime' ) ?></td>
 					<td style="font-size:12px;"><?= htmlspecialchars( substr( $lic['created_at'], 0, 10 ) ) ?></td>
 					<td>
