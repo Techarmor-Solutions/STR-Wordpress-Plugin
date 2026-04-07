@@ -65,6 +65,9 @@ class LicenseManager {
 			return array( 'valid' => false, 'status' => 'empty', 'message' => __( 'Please enter a license key.', 'str-direct-booking' ) );
 		}
 
+		// Clear any stale cached status before activating.
+		delete_transient( self::TRANSIENT_CACHE );
+
 		$result = $this->validate_with_server( $key, 'activate' );
 
 		if ( $result['valid'] ) {
@@ -277,11 +280,12 @@ class LicenseManager {
 		}
 
 		// Verify HMAC signature if secret is configured.
+		// Use JSON_UNESCAPED_UNICODE to match the server's signing method exactly.
 		if ( defined( 'STR_LICENSE_SERVER_SECRET' ) && ! empty( STR_LICENSE_SERVER_SECRET ) && isset( $data['hmac'] ) ) {
 			$received_hmac = $data['hmac'];
 			$payload       = $data;
 			unset( $payload['hmac'] );
-			$expected_hmac = hash_hmac( 'sha256', wp_json_encode( $payload ), STR_LICENSE_SERVER_SECRET );
+			$expected_hmac = hash_hmac( 'sha256', json_encode( $payload, JSON_UNESCAPED_UNICODE ), STR_LICENSE_SERVER_SECRET );
 
 			if ( ! hash_equals( $expected_hmac, $received_hmac ) ) {
 				return array(

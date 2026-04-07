@@ -329,10 +329,12 @@ class Settings {
 			'grace'        => __( 'Grace Period', 'str-direct-booking' ),
 			'missing'      => __( 'No License', 'str-direct-booking' ),
 			'invalid'      => __( 'Invalid', 'str-direct-booking' ),
+			'not_found'    => __( 'Key Not Found', 'str-direct-booking' ),
 			'revoked'      => __( 'Revoked', 'str-direct-booking' ),
 			'expired'      => __( 'Expired', 'str-direct-booking' ),
 			'offline'      => __( 'Server Offline', 'str-direct-booking' ),
 			'unknown'      => __( 'Unknown', 'str-direct-booking' ),
+			'tampered'     => __( 'Verification Failed', 'str-direct-booking' ),
 		);
 		$badge_label = $badge_labels[ $status ] ?? ucfirst( $status );
 
