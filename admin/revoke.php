@@ -41,4 +41,8 @@ if ( $action === 'revoke' ) {
 	Auth::set_flash( 'success', 'License restored for ' . $license['customer_name'] . '.' );
 }
 
-Response::redirect( 'licenses.php' );
+$redirect = $_POST['_redirect'] ?? 'licenses.php';
+if ( ! preg_match( '/^[a-z0-9_\-\.]+\.php(\?[a-z0-9=&%_\-\.]*)?$/i', $redirect ) ) {
+	$redirect = 'licenses.php';
+}
+Response::redirect( $redirect );

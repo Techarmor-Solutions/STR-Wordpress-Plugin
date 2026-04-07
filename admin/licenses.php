@@ -2,18 +2,16 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 Auth::require_login();
 
-$db              = Database::get();
-$search          = trim( $_GET['q'] ?? '' );
-$filter          = $_GET['status'] ?? 'all';
-$conn_filter     = $_GET['connection'] ?? 'all';
-$page            = max( 1, (int) ( $_GET['page'] ?? 1 ) );
-$per             = 50;
-$offset          = ( $page - 1 ) * $per;
-$disconn_secs    = 3 * 24 * 60 * 60; // 3 days
-$now             = date( 'Y-m-d H:i:s' );
-$disconn_cutoff  = date( 'Y-m-d H:i:s', time() - $disconn_secs );
+$db             = Database::get();
+$search         = trim( $_GET['q'] ?? '' );
+$filter         = $_GET['status'] ?? 'all';
+$conn_filter    = $_GET['connection'] ?? 'all';
+$page           = max( 1, (int) ( $_GET['page'] ?? 1 ) );
+$per            = 50;
+$offset         = ( $page - 1 ) * $per;
+$disconn_secs   = 3 * 24 * 60 * 60;
+$disconn_cutoff = date( 'Y-m-d H:i:s', time() - $disconn_secs );
 
-// Build query.
 $where  = [];
 $params = [];
 
@@ -26,8 +24,6 @@ if ( in_array( $filter, [ 'active', 'revoked', 'expired' ], true ) ) {
 	$where[]  = 'l.status = ?';
 	$params[] = $filter;
 }
-
-// Connection filter applied via SQL where possible.
 if ( $conn_filter === 'never' ) {
 	$where[] = 'la.last_seen_at IS NULL';
 } elseif ( $conn_filter === 'connected' ) {
@@ -78,30 +74,36 @@ $flash = Auth::get_flash();
 <title>Licenses — <?= htmlspecialchars( PRODUCT_NAME ) ?></title>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <style>
-.badge-never        { background:#94a3b8;color:#fff; }
-.badge-connected    { background:#16a34a;color:#fff; }
-.badge-disconnected { background:#f97316;color:#fff; }
+.badge-never        { background:#94a3b8; color:#fff; }
+.badge-connected    { background:#16a34a; color:#fff; }
+.badge-disconnected { background:#f97316; color:#fff; }
 
-.data-table { table-layout:fixed; width:100%; }
-.data-table th, .data-table td { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.licenses-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+.licenses-table th,
+.licenses-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e8ecef; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.licenses-table thead th { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#888; background:#f8f9fa; }
+.licenses-table tbody tr:hover { background:#f5f7fa; }
 
-.col-customer  { width:9%; }
-.col-email     { width:14%; }
-.col-key       { width:18%; }
-.col-status    { width:8%; }
-.col-conn      { width:12%; }
-.col-site      { width:18%; }
-.col-expires   { width:8%; }
-.col-created   { width:8%; }
-.col-actions   { width:7%; }
+.col-name    { width:14%; }
+.col-key     { width:24%; }
+.col-status  { width:9%; }
+.col-conn    { width:16%; }
+.col-site    { width:22%; }
+.col-expires { width:8%; }
+.col-actions { width:7%; }
 
-.key-cell { display:flex; align-items:center; gap:2px; }
-.conn-sub { display:block; font-size:10px; color:#888; margin-top:1px; }
+.conn-sub  { display:block; font-size:10px; color:#999; margin-top:1px; }
+.name-link { color:#1a1a2e; text-decoration:none; font-weight:500; }
+.name-link:hover { color:#2271b1; text-decoration:underline; }
+.key-wrap  { display:flex; align-items:center; gap:2px; min-width:0; }
+.key-wrap span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; font-family:monospace; font-size:12px; }
+.icon-btn  { background:none; border:none; cursor:pointer; padding:0 3px; font-size:13px; flex-shrink:0; }
 </style>
 </head>
 <body>
 <?php require __DIR__ . '/partials/nav.php'; ?>
 <main class="container">
+
 	<?php if ( $flash ) : ?>
 		<div class="alert alert-<?= $flash['type'] === 'success' ? 'success' : 'error' ?>"><?= htmlspecialchars( $flash['message'] ) ?></div>
 	<?php endif; ?>
@@ -111,7 +113,7 @@ $flash = Auth::get_flash();
 		<a href="generate.php" class="btn btn-primary">+ Generate Key</a>
 	</div>
 
-	<form method="get" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+	<form method="get" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
 		<input type="text" name="q" value="<?= htmlspecialchars( $search ) ?>" placeholder="Search name, email, key…"
 			style="padding:7px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px;flex:1;min-width:160px;">
 		<select name="status" style="padding:7px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px;">
@@ -135,23 +137,21 @@ $flash = Auth::get_flash();
 	<?php if ( empty( $licenses ) ) : ?>
 		<p style="color:#666;">No licenses found.</p>
 	<?php else : ?>
-		<table class="data-table">
+		<table class="licenses-table">
 			<thead>
 				<tr>
-					<th class="col-customer">Customer</th>
-					<th class="col-email">Email</th>
+					<th class="col-name">Customer</th>
 					<th class="col-key">License Key</th>
 					<th class="col-status">Status</th>
 					<th class="col-conn">Connection</th>
 					<th class="col-site">Site</th>
 					<th class="col-expires">Expires</th>
-					<th class="col-created">Created</th>
 					<th class="col-actions">Actions</th>
 				</tr>
 			</thead>
 			<tbody>
 			<?php foreach ( $licenses as $lic ) :
-				$conn = get_connection( $lic, $disconn_secs );
+				$conn        = get_connection( $lic, $disconn_secs );
 				$badge_class = match( $lic['status'] ) {
 					'active'  => 'badge-active',
 					'revoked' => 'badge-revoked',
@@ -159,14 +159,17 @@ $flash = Auth::get_flash();
 				};
 			?>
 				<tr>
-					<td class="col-customer" title="<?= htmlspecialchars( $lic['customer_name'] ) ?>"><?= htmlspecialchars( $lic['customer_name'] ) ?></td>
-					<td class="col-email" title="<?= htmlspecialchars( $lic['customer_email'] ) ?>"><?= htmlspecialchars( $lic['customer_email'] ) ?></td>
-					<td class="col-key" style="font-family:monospace;font-size:12px;">
-						<div class="key-cell">
+					<td class="col-name" title="<?= htmlspecialchars( $lic['customer_name'] ) ?>">
+						<a href="license-detail.php?id=<?= (int) $lic['id'] ?>" class="name-link">
+							<?= htmlspecialchars( $lic['customer_name'] ) ?>
+						</a>
+					</td>
+					<td class="col-key">
+						<div class="key-wrap">
 							<span class="key-masked"><?= htmlspecialchars( LicenseKey::mask( $lic['license_key'] ) ) ?></span>
 							<span class="key-full" style="display:none;"><?= htmlspecialchars( $lic['license_key'] ) ?></span>
-							<button type="button" onclick="toggleKey(this)" style="background:none;border:none;cursor:pointer;color:#666;font-size:12px;padding:0 2px;flex-shrink:0;" title="Show/hide">👁</button>
-							<button type="button" onclick="copyKey(this,'<?= htmlspecialchars( $lic['license_key'], ENT_QUOTES ) ?>')" style="background:none;border:none;cursor:pointer;color:#2271b1;font-size:12px;padding:0 2px;flex-shrink:0;" title="Copy">⎘</button>
+							<button type="button" class="icon-btn" onclick="toggleKey(this)" title="Show/hide">👁</button>
+							<button type="button" class="icon-btn" style="color:#2271b1;" onclick="copyKey(this,'<?= htmlspecialchars( $lic['license_key'], ENT_QUOTES ) ?>')" title="Copy key">⎘</button>
 						</div>
 					</td>
 					<td class="col-status"><span class="badge <?= $badge_class ?>"><?= htmlspecialchars( $lic['status'] ) ?></span></td>
@@ -176,11 +179,10 @@ $flash = Auth::get_flash();
 							<span class="conn-sub"><?= htmlspecialchars( $conn['sub'] ) ?></span>
 						<?php endif; ?>
 					</td>
-					<td class="col-site" title="<?= htmlspecialchars( $lic['site_url'] ?? '' ) ?>" style="font-size:12px;color:#555;">
+					<td class="col-site" title="<?= htmlspecialchars( $lic['site_url'] ?? '' ) ?>" style="color:#555;">
 						<?= htmlspecialchars( $lic['site_url'] ?? '—' ) ?>
 					</td>
-					<td class="col-expires" style="font-size:12px;"><?= htmlspecialchars( $lic['expires_at'] ?? 'Lifetime' ) ?></td>
-					<td class="col-created" style="font-size:12px;"><?= htmlspecialchars( substr( $lic['created_at'], 0, 10 ) ) ?></td>
+					<td class="col-expires"><?= htmlspecialchars( $lic['expires_at'] ?? 'Lifetime' ) ?></td>
 					<td class="col-actions">
 						<?php if ( $lic['status'] === 'active' ) : ?>
 							<form method="post" action="revoke.php" style="display:inline;" onsubmit="return confirm('Revoke this license?');">
@@ -217,9 +219,9 @@ $flash = Auth::get_flash();
 
 <script>
 function toggleKey(btn) {
-	var cell   = btn.closest('.key-cell');
-	var masked = cell.querySelector('.key-masked');
-	var full   = cell.querySelector('.key-full');
+	var wrap   = btn.closest('.key-wrap');
+	var masked = wrap.querySelector('.key-masked');
+	var full   = wrap.querySelector('.key-full');
 	if ( full.style.display === 'none' ) {
 		masked.style.display = 'none';
 		full.style.display   = 'inline';
