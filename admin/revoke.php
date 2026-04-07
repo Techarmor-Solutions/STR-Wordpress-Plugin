@@ -14,7 +14,7 @@ if ( ! Auth::verify_csrf( $_POST['_csrf'] ?? '' ) ) {
 $license_id = (int) ( $_POST['license_id'] ?? 0 );
 $action     = $_POST['action'] ?? '';
 
-if ( ! $license_id || ! in_array( $action, [ 'revoke', 'restore' ], true ) ) {
+if ( ! $license_id || ! in_array( $action, [ 'revoke', 'restore', 'archive', 'unarchive' ], true ) ) {
 	Auth::set_flash( 'error', 'Invalid request.' );
 	Response::redirect( 'licenses.php' );
 }
@@ -29,20 +29,30 @@ if ( ! $license ) {
 	Response::redirect( 'licenses.php' );
 }
 
+// Optional redirect target (must be a safe relative path to a .php file in the admin dir).
+$redirect_raw = $_POST['_redirect'] ?? '';
+$redirect_to  = ( preg_match( '/^[a-zA-Z0-9_\-]+\.php(\?.*)?$/', $redirect_raw ) ) ? $redirect_raw : 'licenses.php';
+
 if ( $action === 'revoke' ) {
 	$db->prepare( "UPDATE licenses SET status='revoked', updated_at=? WHERE id=?" )
 	   ->execute( [ date( 'Y-m-d H:i:s' ), $license_id ] );
 	audit_log( $license_id, 'revoked_by_admin' );
 	Auth::set_flash( 'success', 'License revoked for ' . $license['customer_name'] . '. Their site will be locked on the next daily check (within 24 hours).' );
-} else {
+} elseif ( $action === 'restore' ) {
 	$db->prepare( "UPDATE licenses SET status='active', updated_at=? WHERE id=?" )
 	   ->execute( [ date( 'Y-m-d H:i:s' ), $license_id ] );
 	audit_log( $license_id, 'restored_by_admin' );
 	Auth::set_flash( 'success', 'License restored for ' . $license['customer_name'] . '.' );
+} elseif ( $action === 'archive' ) {
+	$db->prepare( "UPDATE licenses SET status='archived', updated_at=? WHERE id=?" )
+	   ->execute( [ date( 'Y-m-d H:i:s' ), $license_id ] );
+	audit_log( $license_id, 'archived_by_admin' );
+	Auth::set_flash( 'success', 'License archived for ' . $license['customer_name'] . '.' );
+} elseif ( $action === 'unarchive' ) {
+	$db->prepare( "UPDATE licenses SET status='active', updated_at=? WHERE id=?" )
+	   ->execute( [ date( 'Y-m-d H:i:s' ), $license_id ] );
+	audit_log( $license_id, 'unarchived_by_admin' );
+	Auth::set_flash( 'success', 'License unarchived for ' . $license['customer_name'] . '.' );
 }
 
-$redirect = $_POST['_redirect'] ?? 'licenses.php';
-if ( ! preg_match( '/^[a-z0-9_\-\.]+\.php(\?[a-z0-9=&%_\-\.]*)?$/i', $redirect ) ) {
-	$redirect = 'licenses.php';
-}
-Response::redirect( $redirect );
+Response::redirect( $redirect_to );

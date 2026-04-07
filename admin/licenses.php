@@ -20,9 +20,12 @@ if ( $search !== '' ) {
 	$like     = '%' . $search . '%';
 	$params   = array_merge( $params, [ $like, $like, $like ] );
 }
-if ( in_array( $filter, [ 'active', 'revoked', 'expired' ], true ) ) {
+if ( in_array( $filter, [ 'active', 'revoked', 'expired', 'archived' ], true ) ) {
 	$where[]  = 'l.status = ?';
 	$params[] = $filter;
+} else {
+	// Default: hide archived.
+	$where[] = "l.status != 'archived'";
 }
 if ( $conn_filter === 'never' ) {
 	$where[] = 'la.last_seen_at IS NULL';
@@ -118,9 +121,10 @@ $flash = Auth::get_flash();
 			style="padding:7px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px;flex:1;min-width:160px;">
 		<select name="status" style="padding:7px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px;">
 			<option value="all"     <?= $filter === 'all'     ? 'selected' : '' ?>>All Statuses</option>
-			<option value="active"  <?= $filter === 'active'  ? 'selected' : '' ?>>Active</option>
-			<option value="revoked" <?= $filter === 'revoked' ? 'selected' : '' ?>>Revoked</option>
-			<option value="expired" <?= $filter === 'expired' ? 'selected' : '' ?>>Expired</option>
+			<option value="active"   <?= $filter === 'active'   ? 'selected' : '' ?>>Active</option>
+			<option value="revoked"  <?= $filter === 'revoked'  ? 'selected' : '' ?>>Revoked</option>
+			<option value="expired"  <?= $filter === 'expired'  ? 'selected' : '' ?>>Expired</option>
+			<option value="archived" <?= $filter === 'archived' ? 'selected' : '' ?>>Archived</option>
 		</select>
 		<select name="connection" style="padding:7px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px;">
 			<option value="all"          <?= $conn_filter === 'all'          ? 'selected' : '' ?>>All Connections</option>
@@ -153,9 +157,10 @@ $flash = Auth::get_flash();
 			<?php foreach ( $licenses as $lic ) :
 				$conn        = get_connection( $lic, $disconn_secs );
 				$badge_class = match( $lic['status'] ) {
-					'active'  => 'badge-active',
-					'revoked' => 'badge-revoked',
-					default   => 'badge-expired',
+					'active'   => 'badge-active',
+					'revoked'  => 'badge-revoked',
+					'archived' => 'badge-archived',
+					default    => 'badge-expired',
 				};
 			?>
 				<tr>
@@ -191,12 +196,31 @@ $flash = Auth::get_flash();
 								<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
 								<button type="submit" class="btn btn-danger btn-sm">Revoke</button>
 							</form>
+							<form method="post" action="revoke.php" style="display:inline;" onsubmit="return confirm('Archive this license?');">
+								<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
+								<input type="hidden" name="action" value="archive">
+								<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
+								<button type="submit" class="btn btn-sm" style="background:#e2e8f0;color:#555;">Archive</button>
+							</form>
 						<?php elseif ( $lic['status'] === 'revoked' ) : ?>
 							<form method="post" action="revoke.php" style="display:inline;">
 								<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
 								<input type="hidden" name="action" value="restore">
 								<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
 								<button type="submit" class="btn btn-restore btn-sm">Restore</button>
+							</form>
+							<form method="post" action="revoke.php" style="display:inline;" onsubmit="return confirm('Archive this license?');">
+								<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
+								<input type="hidden" name="action" value="archive">
+								<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
+								<button type="submit" class="btn btn-sm" style="background:#e2e8f0;color:#555;">Archive</button>
+							</form>
+						<?php elseif ( $lic['status'] === 'archived' ) : ?>
+							<form method="post" action="revoke.php" style="display:inline;" onsubmit="return confirm('Unarchive this license?');">
+								<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
+								<input type="hidden" name="action" value="unarchive">
+								<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
+								<button type="submit" class="btn btn-restore btn-sm">Unarchive</button>
 							</form>
 						<?php endif; ?>
 					</td>

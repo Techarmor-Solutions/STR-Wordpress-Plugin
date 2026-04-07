@@ -79,9 +79,10 @@ function get_connection( array $lic, int $threshold ): array {
 
 $conn        = get_connection( $lic, $disconn_secs );
 $badge_class = match( $lic['status'] ) {
-	'active'  => 'badge-active',
-	'revoked' => 'badge-revoked',
-	default   => 'badge-expired',
+	'active'   => 'badge-active',
+	'revoked'  => 'badge-revoked',
+	'archived' => 'badge-archived',
+	default    => 'badge-expired',
 };
 ?>
 <!DOCTYPE html>
@@ -197,9 +198,10 @@ textarea { resize:vertical; min-height:70px; }
 		</div>
 	</div>
 
-	<!-- Revoke / Restore -->
+	<!-- Actions -->
 	<div class="detail-card">
 		<h2>Actions</h2>
+		<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
 		<?php if ( $lic['status'] === 'active' ) : ?>
 			<form method="post" action="revoke.php" onsubmit="return confirm('Revoke this license? Booking features will be disabled on their site within 24 hours.');">
 				<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
@@ -208,7 +210,13 @@ textarea { resize:vertical; min-height:70px; }
 				<input type="hidden" name="_redirect" value="license-detail.php?id=<?= (int) $lic['id'] ?>">
 				<button type="submit" class="btn btn-danger">Revoke License</button>
 			</form>
-			<p style="font-size:12px;color:#888;margin-top:8px;">Revoking will disable booking functionality on the connected site within 24 hours.</p>
+			<form method="post" action="revoke.php" onsubmit="return confirm('Archive this license? It will be hidden from the main list.');">
+				<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
+				<input type="hidden" name="action" value="archive">
+				<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
+				<input type="hidden" name="_redirect" value="licenses.php">
+				<button type="submit" class="btn" style="background:#e2e8f0;color:#555;">Archive License</button>
+			</form>
 		<?php elseif ( $lic['status'] === 'revoked' ) : ?>
 			<form method="post" action="revoke.php">
 				<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
@@ -217,8 +225,27 @@ textarea { resize:vertical; min-height:70px; }
 				<input type="hidden" name="_redirect" value="license-detail.php?id=<?= (int) $lic['id'] ?>">
 				<button type="submit" class="btn btn-restore">Restore License</button>
 			</form>
-		<?php else : ?>
-			<p style="color:#888;font-size:13px;">No actions available for <?= htmlspecialchars( $lic['status'] ) ?> licenses.</p>
+			<form method="post" action="revoke.php" onsubmit="return confirm('Archive this license? It will be hidden from the main list.');">
+				<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
+				<input type="hidden" name="action" value="archive">
+				<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
+				<input type="hidden" name="_redirect" value="licenses.php">
+				<button type="submit" class="btn" style="background:#e2e8f0;color:#555;">Archive License</button>
+			</form>
+		<?php elseif ( $lic['status'] === 'archived' ) : ?>
+			<form method="post" action="revoke.php" onsubmit="return confirm('Unarchive this license? It will be restored to active.');">
+				<input type="hidden" name="license_id" value="<?= (int) $lic['id'] ?>">
+				<input type="hidden" name="action" value="unarchive">
+				<input type="hidden" name="_csrf" value="<?= htmlspecialchars( Auth::csrf_token() ) ?>">
+				<input type="hidden" name="_redirect" value="license-detail.php?id=<?= (int) $lic['id'] ?>">
+				<button type="submit" class="btn btn-restore">Unarchive License</button>
+			</form>
+		<?php endif; ?>
+		</div>
+		<?php if ( $lic['status'] === 'active' ) : ?>
+			<p style="font-size:12px;color:#888;margin-top:10px;">Revoking will disable booking functionality on the connected site within 24 hours.</p>
+		<?php elseif ( $lic['status'] === 'archived' ) : ?>
+			<p style="font-size:12px;color:#888;margin-top:10px;">This license is archived and hidden from the main list.</p>
 		<?php endif; ?>
 	</div>
 
