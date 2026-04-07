@@ -183,6 +183,7 @@ class ComposerStaticInit5aa3a35f0344122e7dcc9f01db585d24
         'STRBooking\\Admin\\AdminDashboard' => __DIR__ . '/../..' . '/includes/admin/class-admin-dashboard.php',
         'STRBooking\\Admin\\CalendarSyncSettings' => __DIR__ . '/../..' . '/includes/admin/class-calendar-sync-settings.php',
         'STRBooking\\Admin\\NotificationSettings' => __DIR__ . '/../..' . '/includes/admin/class-notification-settings.php',
+        'STRBooking\\Admin\\PricingCalendar' => __DIR__ . '/../..' . '/includes/admin/class-pricing-calendar.php',
         'STRBooking\\Admin\\PropertyManager' => __DIR__ . '/../..' . '/includes/admin/class-property-manager.php',
         'STRBooking\\Admin\\Settings' => __DIR__ . '/../..' . '/includes/admin/class-settings.php',
         'STRBooking\\BookingManager' => __DIR__ . '/../..' . '/includes/class-booking-manager.php',

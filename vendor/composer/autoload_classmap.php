@@ -156,6 +156,7 @@ return array(
     'STRBooking\\Admin\\AdminDashboard' => $baseDir . '/includes/admin/class-admin-dashboard.php',
     'STRBooking\\Admin\\CalendarSyncSettings' => $baseDir . '/includes/admin/class-calendar-sync-settings.php',
     'STRBooking\\Admin\\NotificationSettings' => $baseDir . '/includes/admin/class-notification-settings.php',
+    'STRBooking\\Admin\\PricingCalendar' => $baseDir . '/includes/admin/class-pricing-calendar.php',
     'STRBooking\\Admin\\PropertyManager' => $baseDir . '/includes/admin/class-property-manager.php',
     'STRBooking\\Admin\\Settings' => $baseDir . '/includes/admin/class-settings.php',
     'STRBooking\\BookingManager' => $baseDir . '/includes/class-booking-manager.php',

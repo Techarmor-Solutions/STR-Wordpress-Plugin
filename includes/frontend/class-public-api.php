@@ -215,12 +215,49 @@ class PublicAPI extends \WP_REST_Controller {
 				'methods'             => \WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'get_availability_calendar' ),
 				'permission_callback' => function () {
-					return current_user_can( 'manage_options' );
+					return current_user_can( 'manage_options' ) || current_user_can( 'str_booking_access' );
 				},
 				'args'                => array(
 					'property_id' => array( 'required' => true, 'type' => 'integer' ),
 					'year'        => array( 'required' => false, 'type' => 'integer' ),
 					'month'       => array( 'required' => false, 'type' => 'integer' ),
+				),
+			)
+		);
+
+		// GET /admin/pricing-calendar/{property_id} — month pricing data for calendar UI
+		register_rest_route(
+			$this->namespace,
+			'/admin/pricing-calendar/(?P<property_id>[\d]+)',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'get_pricing_calendar' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' ) || current_user_can( 'str_booking_access' );
+				},
+				'args'                => array(
+					'property_id' => array( 'required' => true, 'type' => 'integer' ),
+					'year'        => array( 'required' => false, 'type' => 'integer' ),
+					'month'       => array( 'required' => false, 'type' => 'integer' ),
+				),
+			)
+		);
+
+		// POST /admin/pricing-calendar/{property_id}/day — update a single day
+		register_rest_route(
+			$this->namespace,
+			'/admin/pricing-calendar/(?P<property_id>[\d]+)/day',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'update_pricing_calendar_day' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' ) || current_user_can( 'str_booking_access' );
+				},
+				'args'                => array(
+					'property_id'    => array( 'required' => true, 'type' => 'integer' ),
+					'date'           => array( 'required' => true, 'type' => 'string' ),
+					'price_override' => array( 'required' => false, 'type' => 'number' ),
+					'is_available'   => array( 'required' => false, 'type' => 'boolean' ),
 				),
 			)
 		);
@@ -833,6 +870,211 @@ class PublicAPI extends \WP_REST_Controller {
 		set_transient( $key, $attempts + 1, HOUR_IN_SECONDS );
 
 		return true;
+	}
+
+	/**
+	 * GET /admin/pricing-calendar/{property_id}
+	 *
+	 * Returns pricing and availability data for every day of the requested month.
+	 * Includes weekday/weekend base prices, per-day overrides, and booking info.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response
+	 */
+	public function get_pricing_calendar( \WP_REST_Request $request ): \WP_REST_Response {
+		global $wpdb;
+
+		$property_id  = (int) $request->get_param( 'property_id' );
+		$year         = (int) ( $request->get_param( 'year' ) ?: date( 'Y' ) );
+		$month        = (int) ( $request->get_param( 'month' ) ?: date( 'n' ) );
+
+		$start = sprintf( '%04d-%02d-01', $year, $month );
+		$end   = date( 'Y-m-d', strtotime( $start . ' +1 month' ) );
+
+		$base_rate     = (float) get_post_meta( $property_id, 'str_nightly_rate', true );
+		$weekday_price = (float) get_post_meta( $property_id, 'str_weekday_price', true ) ?: $base_rate;
+		$weekend_price = (float) get_post_meta( $property_id, 'str_weekend_price', true ) ?: $base_rate;
+
+		$table = $wpdb->prefix . 'str_availability';
+
+		// Fetch all availability rows for the month.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT date, status, price_override FROM {$table}
+				WHERE property_id = %d AND date >= %s AND date < %s",
+				$property_id,
+				$start,
+				$end
+			),
+			ARRAY_A
+		);
+
+		$av_map = array();
+		foreach ( $rows as $row ) {
+			$av_map[ $row['date'] ] = $row;
+		}
+
+		// Also pull confirmed bookings for guest name display.
+		$bookings = get_posts( array(
+			'post_type'      => 'str_booking',
+			'post_status'    => array( 'confirmed', 'checked_in' ),
+			'posts_per_page' => -1,
+			'meta_query'     => array(
+				array( 'key' => 'str_property_id', 'value' => $property_id, 'type' => 'NUMERIC', 'compare' => '=' ),
+			),
+		) );
+
+		// Build date → booking map.
+		$booking_map = array();
+		foreach ( $bookings as $booking_post ) {
+			$ci = get_post_meta( $booking_post->ID, 'str_check_in',  true );
+			$co = get_post_meta( $booking_post->ID, 'str_check_out', true );
+			$gn = get_post_meta( $booking_post->ID, 'str_guest_name', true );
+			if ( ! $ci || ! $co ) {
+				continue;
+			}
+			$cur = new \DateTime( $ci );
+			$end_dt = new \DateTime( $co );
+			while ( $cur < $end_dt ) {
+				$ds = $cur->format( 'Y-m-d' );
+				if ( $ds >= $start && $ds < $end ) {
+					$booking_map[ $ds ] = array(
+						'booking_id'  => $booking_post->ID,
+						'guest_name'  => $gn,
+						'check_in'    => $ci,
+						'check_out'   => $co,
+					);
+				}
+				$cur->modify( '+1 day' );
+			}
+		}
+
+		// Build day-by-day result.
+		$days    = array();
+		$current = new \DateTime( $start );
+		$end_dt  = new \DateTime( $end );
+
+		while ( $current < $end_dt ) {
+			$date = $current->format( 'Y-m-d' );
+			$dow  = (int) $current->format( 'N' ); // 1=Mon…7=Sun
+			$is_weekend = in_array( $dow, array( 5, 6, 7 ), true );
+			$base_price = $is_weekend ? $weekend_price : $weekday_price;
+
+			$av_row       = $av_map[ $date ] ?? null;
+			$override     = isset( $av_row['price_override'] ) && $av_row['price_override'] !== null
+				? (float) $av_row['price_override']
+				: null;
+			$status       = $av_row['status'] ?? 'available';
+			$is_available = ( 'blocked' !== $status );
+			$booking      = $booking_map[ $date ] ?? null;
+
+			if ( $booking ) {
+				$is_available = false;
+			}
+
+			$days[] = array(
+				'date'          => $date,
+				'base_price'    => $base_price,
+				'price_override' => $override,
+				'effective_price' => $override ?? $base_price,
+				'is_weekend'    => $is_weekend,
+				'is_available'  => $is_available,
+				'status'        => $booking ? 'booked' : $status,
+				'booking'       => $booking,
+			);
+
+			$current->modify( '+1 day' );
+		}
+
+		return rest_ensure_response( array(
+			'property_id'   => $property_id,
+			'year'          => $year,
+			'month'         => $month,
+			'weekday_price' => $weekday_price,
+			'weekend_price' => $weekend_price,
+			'base_rate'     => $base_rate,
+			'days'          => $days,
+		) );
+	}
+
+	/**
+	 * POST /admin/pricing-calendar/{property_id}/day
+	 *
+	 * Update availability and/or price override for a single day.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function update_pricing_calendar_day( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		global $wpdb;
+
+		$property_id   = (int) $request->get_param( 'property_id' );
+		$date          = sanitize_text_field( $request->get_param( 'date' ) );
+		$price_param   = $request->get_param( 'price_override' );
+		$avail_param   = $request->get_param( 'is_available' );
+
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+			return new \WP_Error( 'invalid_date', 'date must be YYYY-MM-DD.', array( 'status' => 400 ) );
+		}
+
+		if ( ! get_post( $property_id ) || get_post_type( $property_id ) !== 'str_property' ) {
+			return new \WP_Error( 'not_found', 'Property not found.', array( 'status' => 404 ) );
+		}
+
+		$table  = $wpdb->prefix . 'str_availability';
+		$now    = current_time( 'mysql' );
+
+		// Determine new values.
+		$price_override = ( null !== $price_param && '' !== $price_param ) ? (float) $price_param : null;
+		$new_status     = 'available';
+		if ( null !== $avail_param ) {
+			$new_status = $avail_param ? 'available' : 'blocked';
+		}
+
+		// Check if row exists.
+		$existing = $wpdb->get_var( $wpdb->prepare(
+			"SELECT id FROM {$table} WHERE property_id = %d AND date = %s",
+			$property_id,
+			$date
+		) );
+
+		if ( $existing ) {
+			// Update existing row.
+			$data   = array( 'status' => $new_status, 'updated_at' => $now );
+			$format = array( '%s', '%s' );
+
+			if ( $price_override !== null ) {
+				$data['price_override']   = $price_override;
+				$format[] = '%f';
+			} elseif ( null === $price_param ) {
+				// Explicit null → clear override.
+				$data['price_override'] = null;
+				$format[] = null;
+			}
+
+			$wpdb->update( $table, $data, array( 'property_id' => $property_id, 'date' => $date ), $format, array( '%d', '%s' ) );
+		} else {
+			// Insert new row.
+			$wpdb->insert(
+				$table,
+				array(
+					'property_id'    => $property_id,
+					'date'           => $date,
+					'status'         => $new_status,
+					'price_override' => $price_override,
+					'created_at'     => $now,
+					'updated_at'     => $now,
+				),
+				array( '%d', '%s', '%s', $price_override !== null ? '%f' : null, '%s', '%s' )
+			);
+		}
+
+		return rest_ensure_response( array(
+			'success'        => true,
+			'date'           => $date,
+			'status'         => $new_status,
+			'price_override' => $price_override,
+		) );
 	}
 
 	/**

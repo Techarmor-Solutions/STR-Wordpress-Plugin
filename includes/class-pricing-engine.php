@@ -94,7 +94,7 @@ class PricingEngine {
 
 		$table = $wpdb->prefix . 'str_availability';
 
-		// Fetch overrides for this date range
+		// Fetch per-day overrides for this date range.
 		$overrides = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT date, price_override FROM {$table}
@@ -114,15 +114,24 @@ class PricingEngine {
 			$override_map[ $row['date'] ] = (float) $row['price_override'];
 		}
 
-		$breakdown  = array();
-		$current    = new \DateTime( $checkin );
-		$end        = new \DateTime( $checkout );
+		// Weekday/weekend base prices (fall back to base_rate if not set).
+		$weekday_price = (float) get_post_meta( $property_id, 'str_weekday_price', true ) ?: $base_rate;
+		$weekend_price = (float) get_post_meta( $property_id, 'str_weekend_price', true ) ?: $base_rate;
+
+		$breakdown = array();
+		$current   = new \DateTime( $checkin );
+		$end       = new \DateTime( $checkout );
 
 		while ( $current < $end ) {
 			$date = $current->format( 'Y-m-d' );
+			$dow  = (int) $current->format( 'N' ); // 1=Mon … 7=Sun
+
+			// Weekend = Friday (5), Saturday (6), Sunday (7).
+			$day_base = in_array( $dow, array( 5, 6, 7 ), true ) ? $weekend_price : $weekday_price;
+
 			$breakdown[] = array(
 				'date' => $date,
-				'rate' => $override_map[ $date ] ?? $base_rate,
+				'rate' => $override_map[ $date ] ?? $day_base,
 			);
 			$current->modify( '+1 day' );
 		}

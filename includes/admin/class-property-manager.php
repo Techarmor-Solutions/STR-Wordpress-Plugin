@@ -139,6 +139,12 @@ class PropertyManager {
 			'str_tax_rate'                  => array( 'type' => 'number', 'description' => 'Property-specific tax rate override' ),
 			'str_host_phone'                => array( 'type' => 'string', 'description' => 'Host phone number' ),
 			'str_instant_book'              => array( 'type' => 'boolean', 'description' => 'Allow instant booking' ),
+			// Pricing tiers
+			'str_weekday_price'             => array( 'type' => 'number',  'description' => 'Weekday nightly price (Mon–Thu)' ),
+			'str_weekend_price'             => array( 'type' => 'number',  'description' => 'Weekend nightly price (Fri–Sun)' ),
+			// Per-property email from
+			'str_from_name'                 => array( 'type' => 'string',  'description' => 'Email from name for this property' ),
+			'str_from_email'                => array( 'type' => 'string',  'description' => 'Email from address for this property' ),
 			// Payment plan settings
 			'str_plan_full_enabled'         => array( 'type' => 'boolean', 'description' => 'Pay-in-full plan enabled' ),
 			'str_plan_two_enabled'          => array( 'type' => 'boolean', 'description' => '2-payment plan enabled' ),
@@ -257,6 +263,8 @@ class PropertyManager {
 
 		$fields = array(
 			'str_nightly_rate'     => array( 'label' => 'Nightly Rate ($)', 'type' => 'number', 'step' => '0.01' ),
+			'str_weekday_price'    => array( 'label' => 'Weekday Price (Mon–Thu, $)', 'type' => 'number', 'step' => '0.01' ),
+			'str_weekend_price'    => array( 'label' => 'Weekend Price (Fri–Sun, $)', 'type' => 'number', 'step' => '0.01' ),
 			'str_cleaning_fee'     => array( 'label' => 'Cleaning Fee ($)', 'type' => 'number', 'step' => '0.01' ),
 			'str_security_deposit' => array( 'label' => 'Security Deposit ($)', 'type' => 'number', 'step' => '0.01' ),
 			'str_max_guests'       => array( 'label' => 'Max Guests', 'type' => 'number', 'step' => '1' ),
@@ -310,7 +318,31 @@ class PropertyManager {
 		echo '<td><textarea id="str_los_discounts" name="str_los_discounts" rows="4" class="large-text code">' . esc_textarea( $los ) . '</textarea>';
 		echo '<p class="description">Example: [{"min_nights":7,"discount":0.10},{"min_nights":28,"discount":0.20}]</p></td></tr>';
 
+		// Email From Name / Email (per-property override)
+		$from_name  = get_post_meta( $post->ID, 'str_from_name', true );
+		$from_email = get_post_meta( $post->ID, 'str_from_email', true );
+		echo '<tr>';
+		echo '<th><label for="str_from_name">' . esc_html__( 'Email From Name', 'str-direct-booking' ) . '</label></th>';
+		echo '<td><input type="text" id="str_from_name" name="str_from_name" value="' . esc_attr( $from_name ) . '" class="regular-text" />';
+		echo '<p class="description">' . esc_html__( 'Overrides the global "From" name for emails sent about this property.', 'str-direct-booking' ) . '</p></td>';
+		echo '</tr>';
+		echo '<tr>';
+		echo '<th><label for="str_from_email">' . esc_html__( 'Email From Address', 'str-direct-booking' ) . '</label></th>';
+		echo '<td><input type="email" id="str_from_email" name="str_from_email" value="' . esc_attr( $from_email ) . '" class="regular-text" />';
+		echo '<p class="description">' . esc_html__( 'Overrides the global "From" email for emails sent about this property.', 'str-direct-booking' ) . '</p></td>';
+		echo '</tr>';
+
 		echo '</tbody></table>';
+
+		// Pricing Calendar link
+		if ( $post->ID ) {
+			$cal_url = admin_url( 'admin.php?page=str-pricing-calendar&property_id=' . $post->ID );
+			echo '<div style="margin:16px 0;padding:12px 16px;background:#f0f6fc;border:1px solid #c2d7f0;border-radius:6px;display:flex;align-items:center;justify-content:space-between;">';
+			echo '<div><strong>' . esc_html__( 'Pricing Calendar', 'str-direct-booking' ) . '</strong>';
+			echo '<p style="margin:4px 0 0;color:#555;font-size:13px;">' . esc_html__( 'Manage day-by-day pricing and availability for this property.', 'str-direct-booking' ) . '</p></div>';
+			printf( '<a href="%s" class="button button-primary" target="_blank">%s →</a>', esc_url( $cal_url ), esc_html__( 'Open Calendar', 'str-direct-booking' ) );
+			echo '</div>';
+		}
 
 		// Payment Plans section
 		echo '<h3 style="margin-top:24px;padding-bottom:8px;border-bottom:1px solid #ddd">' . esc_html__( 'Payment Plans', 'str-direct-booking' ) . '</h3>';
@@ -513,8 +545,8 @@ class PropertyManager {
 			return;
 		}
 
-		$number_fields  = array( 'str_nightly_rate', 'str_cleaning_fee', 'str_security_deposit', 'str_tax_rate' );
-		$text_fields    = array( 'str_check_in_time', 'str_check_out_time', 'str_address', 'str_door_code', 'str_wifi_password', 'str_host_phone', 'str_los_discounts' );
+		$number_fields  = array( 'str_nightly_rate', 'str_weekday_price', 'str_weekend_price', 'str_cleaning_fee', 'str_security_deposit', 'str_tax_rate' );
+		$text_fields    = array( 'str_check_in_time', 'str_check_out_time', 'str_address', 'str_door_code', 'str_wifi_password', 'str_host_phone', 'str_los_discounts', 'str_from_name', 'str_from_email' );
 		$integer_fields = array( 'str_min_nights', 'str_max_nights', 'str_max_guests', 'str_plan_two_deposit_pct', 'str_plan_two_days_before', 'str_plan_four_deposit_min_pct', 'str_turnover_buffer' );
 		$boolean_fields = array( 'str_plan_full_enabled', 'str_plan_two_enabled', 'str_plan_four_enabled', 'str_door_code_use_phone' );
 

@@ -13,6 +13,7 @@ namespace STRBooking;
 use STRBooking\Admin\AdminDashboard;
 use STRBooking\Admin\CalendarSyncSettings;
 use STRBooking\Admin\NotificationSettings;
+use STRBooking\Admin\PricingCalendar;
 use STRBooking\Admin\PropertyManager;
 use STRBooking\Admin\Settings;
 use STRBooking\Frontend\BookingWidget;
@@ -124,6 +125,11 @@ class STRBooking {
 	public SquareHandler $square_handler;
 
 	/**
+	 * @var PricingCalendar
+	 */
+	public PricingCalendar $pricing_calendar;
+
+	/**
 	 * @var LicenseManager
 	 */
 	public LicenseManager $license_manager;
@@ -165,6 +171,7 @@ class STRBooking {
 		$this->calendar_sync_settings  = new CalendarSyncSettings();
 		$this->plugin_updater          = new PluginUpdater( STR_BOOKING_PLUGIN_DIR . 'str-direct-booking.php' );
 		$this->square_handler          = new SquareHandler();
+		$this->pricing_calendar        = new PricingCalendar();
 	}
 
 	/**
@@ -184,6 +191,16 @@ class STRBooking {
 		// Schedule daily license validation
 		if ( ! wp_next_scheduled( LicenseManager::CRON_HOOK ) ) {
 			wp_schedule_event( time(), 'daily', LicenseManager::CRON_HOOK );
+		}
+
+		// Grant str_booking_access to administrator by default.
+		$admin_role = get_role( 'administrator' );
+		if ( $admin_role ) {
+			$admin_role->add_cap( 'str_booking_access' );
+			// Persist the default allowed roles option if not already set.
+			if ( ! get_option( 'str_booking_role_access' ) ) {
+				update_option( 'str_booking_role_access', array( 'administrator' ) );
+			}
 		}
 
 		// Flush rewrite rules for iCal endpoint and property slugs

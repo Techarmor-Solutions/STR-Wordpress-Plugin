@@ -34,11 +34,13 @@ class AdminDashboard {
 	 * Register top-level admin menu and submenus.
 	 */
 	public function register_admin_menus(): void {
+		$cap = current_user_can( 'manage_options' ) ? 'manage_options' : 'str_booking_access';
+
 		// Top-level menu
 		add_menu_page(
 			__( 'STR Booking', 'str-direct-booking' ),
 			__( 'STR Booking', 'str-direct-booking' ),
-			'manage_options',
+			$cap,
 			'str-booking',
 			array( $this, 'render_dashboard_page' ),
 			'dashicons-calendar-alt',
@@ -50,7 +52,7 @@ class AdminDashboard {
 			'str-booking',
 			__( 'Dashboard', 'str-direct-booking' ),
 			__( 'Dashboard', 'str-direct-booking' ),
-			'manage_options',
+			$cap,
 			'str-booking',
 			array( $this, 'render_dashboard_page' )
 		);
@@ -60,7 +62,7 @@ class AdminDashboard {
 			'str-booking',
 			__( 'Properties', 'str-direct-booking' ),
 			__( 'Properties', 'str-direct-booking' ),
-			'manage_options',
+			$cap,
 			'edit.php?post_type=str_property'
 		);
 
@@ -69,11 +71,21 @@ class AdminDashboard {
 			'str-booking',
 			__( 'Bookings', 'str-direct-booking' ),
 			__( 'Bookings', 'str-direct-booking' ),
-			'manage_options',
+			$cap,
 			'edit.php?post_type=str_booking'
 		);
 
-		// Settings submenu
+		// Pricing Calendar submenu
+		add_submenu_page(
+			'str-booking',
+			__( 'Pricing Calendar', 'str-direct-booking' ),
+			__( 'Pricing Calendar', 'str-direct-booking' ),
+			$cap,
+			'str-pricing-calendar',
+			array( $this, 'render_pricing_calendar_page' )
+		);
+
+		// Settings submenu — always requires manage_options
 		add_submenu_page(
 			'str-booking',
 			__( 'Settings', 'str-direct-booking' ),
@@ -82,6 +94,15 @@ class AdminDashboard {
 			'str-booking-settings',
 			array( $this, 'render_settings_page' )
 		);
+	}
+
+	/**
+	 * Render the pricing calendar page (delegates to PricingCalendar class).
+	 */
+	public function render_pricing_calendar_page(): void {
+		if ( class_exists( 'STRBooking\\Admin\\PricingCalendar' ) ) {
+			( new \STRBooking\Admin\PricingCalendar() )->render();
+		}
 	}
 
 	/**

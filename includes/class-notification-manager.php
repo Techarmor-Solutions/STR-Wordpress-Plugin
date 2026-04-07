@@ -311,13 +311,28 @@ class NotificationManager {
 			$body = nl2br( esc_html( $body ) );
 		}
 
-		$from_name  = get_option( 'str_booking_from_name', get_bloginfo( 'name' ) );
-		$from_email = get_option( 'str_booking_from_email', get_option( 'admin_email' ) );
+		$property_id = $booking['property_id'] ?? 0;
+
+		// Property-level from name/email override, falling back to global settings.
+		$from_name  = ( $property_id && get_post_meta( $property_id, 'str_from_name', true ) )
+			? get_post_meta( $property_id, 'str_from_name', true )
+			: get_option( 'str_booking_from_name', get_bloginfo( 'name' ) );
+		$from_email = ( $property_id && get_post_meta( $property_id, 'str_from_email', true ) )
+			? get_post_meta( $property_id, 'str_from_email', true )
+			: get_option( 'str_booking_from_email', get_option( 'admin_email' ) );
 
 		$headers = array(
 			'Content-Type: text/html; charset=UTF-8',
 			sprintf( 'From: %s <%s>', $from_name, $from_email ),
 		);
+
+		// BCC admin on booking confirmation if configured.
+		if ( 'booking_confirmation' === $type && get_option( 'str_booking_admin_copy_enabled' ) ) {
+			$admin_email = get_option( 'str_booking_admin_copy_email', get_option( 'admin_email' ) );
+			if ( ! empty( $admin_email ) ) {
+				$headers[] = 'Bcc: ' . sanitize_email( $admin_email );
+			}
+		}
 
 		wp_mail( $booking['guest_email'], $subject, $body, $headers );
 	}

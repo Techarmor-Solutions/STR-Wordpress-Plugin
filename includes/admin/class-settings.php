@@ -278,6 +278,78 @@ class Settings {
 			);
 		}
 
+		// ── Admin Booking Notifications ─────────────────────────────────────
+		register_setting( 'str_booking_settings', 'str_booking_admin_copy_enabled', array( 'sanitize_callback' => 'absint' ) );
+		register_setting( 'str_booking_settings', 'str_booking_admin_copy_email',   array( 'sanitize_callback' => 'sanitize_email' ) );
+
+		add_settings_section(
+			'str_booking_admin_copy',
+			__( 'Admin Booking Notifications', 'str-direct-booking' ),
+			function () {
+				echo '<p>' . esc_html__( 'Receive a BCC copy of booking confirmation emails.', 'str-direct-booking' ) . '</p>';
+			},
+			'str-booking-settings'
+		);
+
+		add_settings_field(
+			'str_booking_admin_copy_enabled',
+			__( 'Send Admin Copy', 'str-direct-booking' ),
+			function () {
+				$val = get_option( 'str_booking_admin_copy_enabled', 0 );
+				echo '<label><input type="checkbox" name="str_booking_admin_copy_enabled" value="1" ' . checked( 1, $val, false ) . ' /> ';
+				esc_html_e( 'BCC admin on every booking confirmation', 'str-direct-booking' );
+				echo '</label>';
+			},
+			'str-booking-settings',
+			'str_booking_admin_copy'
+		);
+
+		add_settings_field(
+			'str_booking_admin_copy_email',
+			__( 'Admin Copy Email', 'str-direct-booking' ),
+			function () {
+				$val = get_option( 'str_booking_admin_copy_email', get_option( 'admin_email' ) );
+				echo '<input type="email" name="str_booking_admin_copy_email" value="' . esc_attr( $val ) . '" class="regular-text" />';
+				echo '<p class="description">' . esc_html__( 'Email address to BCC on booking confirmations. Defaults to site admin email.', 'str-direct-booking' ) . '</p>';
+			},
+			'str-booking-settings',
+			'str_booking_admin_copy'
+		);
+
+		// ── Access & Permissions ─────────────────────────────────────────────
+		register_setting(
+			'str_booking_settings',
+			'str_booking_role_access',
+			array(
+				'sanitize_callback' => function ( $value ) {
+					$value = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : array();
+					// Always keep administrator.
+					if ( ! in_array( 'administrator', $value, true ) ) {
+						$value[] = 'administrator';
+					}
+					$this->sync_role_capabilities( $value );
+					return $value;
+				},
+			)
+		);
+
+		add_settings_section(
+			'str_booking_access',
+			__( 'Access & Permissions', 'str-direct-booking' ),
+			function () {
+				echo '<p>' . esc_html__( 'Choose which user roles can access the STR Booking admin area. Administrators always have access.', 'str-direct-booking' ) . '</p>';
+			},
+			'str-booking-settings'
+		);
+
+		add_settings_field(
+			'str_booking_role_access',
+			__( 'Allowed Roles', 'str-direct-booking' ),
+			array( $this, 'render_role_checkboxes' ),
+			'str-booking-settings',
+			'str_booking_access'
+		);
+
 		// ── Updates ───────────────────────────────────────────────────────────
 		add_settings_section(
 			'str_booking_updates',
@@ -426,6 +498,47 @@ class Settings {
 			<?php endif; ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Render role checkboxes for the Access & Permissions setting.
+	 */
+	public function render_role_checkboxes(): void {
+		$allowed = (array) get_option( 'str_booking_role_access', array( 'administrator' ) );
+		$roles   = wp_roles()->get_names();
+		echo '<fieldset>';
+		foreach ( $roles as $role_slug => $role_name ) {
+			$checked  = in_array( $role_slug, $allowed, true );
+			$disabled = ( 'administrator' === $role_slug ) ? ' disabled' : '';
+			printf(
+				'<label style="display:block;margin-bottom:6px;"><input type="checkbox" name="str_booking_role_access[]" value="%s" %s%s /> %s</label>',
+				esc_attr( $role_slug ),
+				checked( $checked, true, false ),
+				$disabled,
+				esc_html( translate_user_role( $role_name ) )
+			);
+		}
+		echo '</fieldset>';
+		echo '<p class="description">' . esc_html__( 'Selected roles will see the STR Booking menu and can access properties, bookings, and the pricing calendar.', 'str-direct-booking' ) . '</p>';
+	}
+
+	/**
+	 * Sync the str_booking_access capability across all WP roles.
+	 *
+	 * @param string[] $allowed_roles Role slugs that should have the capability.
+	 */
+	public function sync_role_capabilities( array $allowed_roles ): void {
+		foreach ( wp_roles()->get_names() as $role_slug => $unused ) {
+			$role = get_role( $role_slug );
+			if ( ! $role ) {
+				continue;
+			}
+			if ( in_array( $role_slug, $allowed_roles, true ) ) {
+				$role->add_cap( 'str_booking_access' );
+			} else {
+				$role->remove_cap( 'str_booking_access' );
+			}
+		}
 	}
 
 	/**
