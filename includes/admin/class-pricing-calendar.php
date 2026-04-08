@@ -65,7 +65,7 @@ class PricingCalendar {
 		$next_year  = (int) date( 'Y', $next_ts );
 		$next_month = (int) date( 'n', $next_ts );
 
-		$base_url = admin_url( 'admin.php?page=str-pricing-calendar' );
+		$base_url = admin_url( 'admin.php?page=str-booking' );
 
 		$prev_url = add_query_arg( array( 'property_id' => $property_id, 'cal_year' => $prev_year,  'cal_month' => $prev_month ), $base_url );
 		$next_url = add_query_arg( array( 'property_id' => $property_id, 'cal_year' => $next_year,  'cal_month' => $next_month ), $base_url );
@@ -85,6 +85,11 @@ class PricingCalendar {
 		$cal_days = $this->build_month_data( $property_id, $year, $month, $weekday_price, $weekend_price );
 
 		$month_name = date_i18n( 'F Y', mktime( 0, 0, 0, $month, 1, $year ) );
+
+		// Metrics.
+		$metrics        = \STRBooking\STRBooking::get_instance()->booking_manager->get_metrics();
+		$currency       = strtoupper( get_option( 'str_booking_currency', 'USD' ) );
+		$revenue_fmt    = $currency . ' ' . number_format( $metrics['total_revenue'], 2 );
 		?>
 		<div class="wrap str-calendar-wrap">
 
@@ -168,14 +173,35 @@ class PricingCalendar {
 		.str-cal-save-msg { font-size:12px; text-align:center; margin-top:8px; min-height:16px; }
 		.str-cal-save-msg.ok { color:#4ade80; }
 		.str-cal-save-msg.err { color:#f87171; }
+
+		/* Metrics */
+		.str-cal-metrics { display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+		.str-cal-metric-card { flex:1; min-width:160px; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; }
+		.str-cal-metric-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#888; margin-bottom:6px; }
+		.str-cal-metric-value { font-size:26px; font-weight:700; color:#1a1a2e; line-height:1; }
 		</style>
+
+		<div class="str-cal-metrics">
+			<div class="str-cal-metric-card">
+				<div class="str-cal-metric-label"><?php esc_html_e( 'Confirmed Bookings', 'str-direct-booking' ); ?></div>
+				<div class="str-cal-metric-value"><?php echo esc_html( $metrics['confirmed_bookings'] ); ?></div>
+			</div>
+			<div class="str-cal-metric-card">
+				<div class="str-cal-metric-label"><?php esc_html_e( 'Pending Bookings', 'str-direct-booking' ); ?></div>
+				<div class="str-cal-metric-value"><?php echo esc_html( $metrics['pending_bookings'] ); ?></div>
+			</div>
+			<div class="str-cal-metric-card">
+				<div class="str-cal-metric-label"><?php esc_html_e( 'Total Revenue', 'str-direct-booking' ); ?></div>
+				<div class="str-cal-metric-value"><?php echo esc_html( $revenue_fmt ); ?></div>
+			</div>
+		</div>
 
 		<div class="str-cal-header">
 			<h1><?php esc_html_e( 'Pricing Calendar', 'str-direct-booking' ); ?></h1>
 
 			<?php if ( count( $properties ) > 1 ) : ?>
 			<form method="get" style="display:inline-flex;gap:6px;align-items:center;">
-				<input type="hidden" name="page" value="str-pricing-calendar">
+				<input type="hidden" name="page" value="str-booking">
 				<input type="hidden" name="cal_year"  value="<?php echo esc_attr( $year ); ?>">
 				<input type="hidden" name="cal_month" value="<?php echo esc_attr( $month ); ?>">
 				<select name="property_id" class="str-cal-property-select" onchange="this.form.submit()">
