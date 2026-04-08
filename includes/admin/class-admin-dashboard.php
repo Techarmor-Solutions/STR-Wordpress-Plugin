@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin Dashboard — top-level menu and React-powered dashboard.
+ * Admin Dashboard — top-level menu and submenus.
  *
  * @package STRBooking\Admin
  */
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Registers admin menus and enqueues the admin React bundle.
+ * Registers admin menus. The dashboard itself renders the Pricing Calendar.
  */
 class AdminDashboard {
 
@@ -27,7 +27,6 @@ class AdminDashboard {
 		$this->booking_manager = $booking_manager;
 
 		add_action( 'admin_menu', array( $this, 'register_admin_menus' ), 10 );
-		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ), 10 );
 	}
 
 	/**
@@ -75,16 +74,6 @@ class AdminDashboard {
 			'edit.php?post_type=str_booking'
 		);
 
-		// Pricing Calendar submenu
-		add_submenu_page(
-			'str-booking',
-			__( 'Pricing Calendar', 'str-direct-booking' ),
-			__( 'Pricing Calendar', 'str-direct-booking' ),
-			$cap,
-			'str-pricing-calendar',
-			array( $this, 'render_pricing_calendar_page' )
-		);
-
 		// Settings submenu — always requires manage_options
 		add_submenu_page(
 			'str-booking',
@@ -97,22 +86,10 @@ class AdminDashboard {
 	}
 
 	/**
-	 * Render the pricing calendar page (delegates to PricingCalendar class).
-	 */
-	public function render_pricing_calendar_page(): void {
-		if ( class_exists( 'STRBooking\\Admin\\PricingCalendar' ) ) {
-			( new \STRBooking\Admin\PricingCalendar() )->render();
-		}
-	}
-
-	/**
-	 * Render the main dashboard page (React mounts here).
+	 * Render the main dashboard page — delegates to PricingCalendar.
 	 */
 	public function render_dashboard_page(): void {
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'STR Booking Dashboard', 'str-direct-booking' ) . '</h1>';
-		echo '<div id="str-admin-dashboard"></div>';
-		echo '</div>';
+		( new \STRBooking\Admin\PricingCalendar() )->render();
 	}
 
 	/**
@@ -130,51 +107,5 @@ class AdminDashboard {
 		submit_button();
 		echo '</form>';
 		echo '</div>';
-	}
-
-	/**
-	 * Enqueue admin scripts on STR Booking pages.
-	 *
-	 * @param string $hook Current admin page hook.
-	 */
-	public function enqueue_admin_scripts( string $hook ): void {
-		// Only load on STR Booking dashboard
-		if ( 'toplevel_page_str-booking' !== $hook ) {
-			return;
-		}
-
-		$asset_file = STR_BOOKING_PLUGIN_DIR . 'assets/js/admin-dashboard.asset.php';
-
-		if ( ! file_exists( $asset_file ) ) {
-			return;
-		}
-
-		$asset = require $asset_file;
-
-		wp_enqueue_script(
-			'str-admin-dashboard',
-			STR_BOOKING_PLUGIN_URL . 'assets/js/admin-dashboard.js',
-			$asset['dependencies'],
-			$asset['version'],
-			true
-		);
-
-		wp_enqueue_style(
-			'str-admin-dashboard',
-			STR_BOOKING_PLUGIN_URL . 'assets/css/admin.css',
-			array(),
-			STR_BOOKING_VERSION
-		);
-
-		wp_localize_script(
-			'str-admin-dashboard',
-			'strAdminData',
-			array(
-				'apiUrl'   => rest_url( 'str-booking/v1' ),
-				'nonce'    => wp_create_nonce( 'wp_rest' ),
-				'adminUrl' => admin_url(),
-				'currency' => get_option( 'str_booking_currency', 'usd' ),
-			)
-		);
 	}
 }
