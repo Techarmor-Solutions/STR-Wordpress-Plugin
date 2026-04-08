@@ -256,7 +256,7 @@ class PublicAPI extends \WP_REST_Controller {
 				'args'                => array(
 					'property_id'    => array( 'required' => true, 'type' => 'integer' ),
 					'date'           => array( 'required' => true, 'type' => 'string' ),
-					'price_override' => array( 'required' => false, 'type' => 'number' ),
+					'price_override' => array( 'required' => false, 'type' => array( 'number', 'null' ) ),
 					'is_available'   => array( 'required' => false, 'type' => 'boolean' ),
 				),
 			)
