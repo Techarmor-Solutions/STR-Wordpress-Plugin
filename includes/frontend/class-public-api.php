@@ -618,7 +618,7 @@ class PublicAPI extends \WP_REST_Controller {
 	}
 
 	/**
-	 * GET /calendar/{property_id} — public monthly availability (date + status only).
+	 * GET /calendar/{property_id} — public monthly availability with per-date pricing.
 	 *
 	 * @param \WP_REST_Request $request
 	 * @return \WP_REST_Response
@@ -637,7 +637,7 @@ class PublicAPI extends \WP_REST_Controller {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT date, status FROM {$table}
+				"SELECT date, status, price_override FROM {$table}
 				WHERE property_id = %d AND date >= %s AND date < %s",
 				$property_id,
 				$start,
@@ -722,9 +722,51 @@ class PublicAPI extends \WP_REST_Controller {
 			}
 		}
 
+		// Compute per-date prices using weekday/weekend pricing and per-day overrides.
+		$base_rate     = (float) get_post_meta( $property_id, 'str_nightly_rate', true );
+		$weekday_price = (float) get_post_meta( $property_id, 'str_weekday_price', true ) ?: $base_rate;
+		$weekend_price = (float) get_post_meta( $property_id, 'str_weekend_price', true ) ?: $base_rate;
+
+		$price_cursor = new \DateTime( $start );
+		$price_end    = new \DateTime( $end );
+
+		while ( $price_cursor < $price_end ) {
+			$date = $price_cursor->format( 'Y-m-d' );
+			$dow  = (int) $price_cursor->format( 'N' ); // 1=Mon … 7=Sun
+
+			// Weekend = Fri(5), Sat(6), Sun(7).
+			$day_base = in_array( $dow, array( 5, 6, 7 ), true ) ? $weekend_price : $weekday_price;
+
+			if ( isset( $date_map[ $date ] ) ) {
+				$override = isset( $date_map[ $date ]['price_override'] ) && '' !== (string) $date_map[ $date ]['price_override']
+					? (float) $date_map[ $date ]['price_override']
+					: null;
+				$date_map[ $date ]['price'] = $override ?? $day_base;
+			} else {
+				$date_map[ $date ] = array(
+					'date'   => $date,
+					'status' => 'available',
+					'price'  => $day_base,
+				);
+			}
+
+			$price_cursor->modify( '+1 day' );
+		}
+
 		ksort( $date_map );
 
-		return rest_ensure_response( array_values( $date_map ) );
+		$result = array_map(
+			function ( $entry ) {
+				return array(
+					'date'   => $entry['date'],
+					'status' => $entry['status'] ?? 'available',
+					'price'  => isset( $entry['price'] ) ? round( (float) $entry['price'], 2 ) : null,
+				);
+			},
+			$date_map
+		);
+
+		return rest_ensure_response( array_values( $result ) );
 	}
 
 	/**

@@ -114,6 +114,116 @@ class BookingWidget {
 				'squareEnvironment'   => get_option( 'str_booking_square_environment', 'sandbox' ),
 			)
 		);
+
+		wp_add_inline_style(
+			'str-booking-widget',
+			'.str-bk-cal-day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.str-bk-price { display: block; font-size: 10px; line-height: 1; margin-top: 2px; opacity: 0.75; pointer-events: none; white-space: nowrap; }'
+		);
+
+		wp_add_inline_script(
+			'str-booking-widget',
+			$this->get_price_injection_script(),
+			'after'
+		);
+	}
+
+	/**
+	 * Returns the vanilla-JS snippet that injects nightly prices into calendar day cells.
+	 */
+	private function get_price_injection_script(): string {
+		return <<<'JS'
+(function () {
+	var priceCache = {};
+	var data = window.strBookingData || {};
+	var apiUrl = data.apiUrl || '';
+	var nonce  = data.nonce  || '';
+	var currency = (data.currency || 'usd').toLowerCase();
+
+	var symbols = { usd: '$', eur: '€', gbp: '£', cad: 'CA$', aud: 'A$', nzd: 'NZ$', chf: 'Fr', jpy: '¥', mxn: 'MX$' };
+
+	function fmt(price) {
+		if (!price) return '';
+		var sym = symbols[currency] || (currency.toUpperCase() + '\u00a0');
+		return sym + Math.round(price);
+	}
+
+	function fetchPrices(propertyId, year, month, cb) {
+		var cacheKey = propertyId + ':' + year + '-' + String(month).padStart(2, '0');
+		if (priceCache[cacheKey]) { cb(priceCache[cacheKey]); return; }
+		fetch(apiUrl + '/calendar/' + propertyId + '?year=' + year + '&month=' + month, {
+			headers: { 'X-WP-Nonce': nonce }
+		})
+		.then(function (r) { return r.json(); })
+		.then(function (data) {
+			var map = {};
+			if (Array.isArray(data)) {
+				data.forEach(function (e) { if (e.date && e.price != null) map[e.date] = e.price; });
+			}
+			priceCache[cacheKey] = map;
+			cb(map);
+		})
+		.catch(function () {});
+	}
+
+	function injectPrices(container, propertyId) {
+		var days = container.querySelectorAll('.str-bk-cal-day:not(.str-bk-cal-day--empty)');
+		if (!days.length) return;
+		var firstDate = null;
+		days.forEach(function (d) { if (!firstDate) firstDate = d.getAttribute('aria-label'); });
+		if (!firstDate || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate)) return;
+		var parts = firstDate.split('-');
+		fetchPrices(propertyId, parseInt(parts[0]), parseInt(parts[1]), function (map) {
+			days.forEach(function (day) {
+				var dateStr = day.getAttribute('aria-label');
+				if (!dateStr) return;
+				var existing = day.querySelector('.str-bk-price');
+				if (existing) existing.remove();
+				var price = map[dateStr];
+				if (price) {
+					var span = document.createElement('span');
+					span.className = 'str-bk-price';
+					span.textContent = fmt(price);
+					day.appendChild(span);
+				}
+			});
+		});
+	}
+
+	function watchWidget(widget) {
+		var propertyId = widget.getAttribute('data-property-id');
+		if (!propertyId) return;
+		var lastTitle = '';
+		var ob = new MutationObserver(function () {
+			var cal = widget.querySelector('.str-bk-calendar');
+			if (!cal) return;
+			var titleEl = cal.querySelector('.str-bk-cal-title');
+			var title = titleEl ? titleEl.textContent : '';
+			if (title !== lastTitle) { lastTitle = title; injectPrices(cal, propertyId); }
+			else { injectPrices(cal, propertyId); }
+		});
+		ob.observe(widget, { childList: true, subtree: true });
+		var cal = widget.querySelector('.str-bk-calendar');
+		if (cal) injectPrices(cal, propertyId);
+	}
+
+	function init() {
+		document.querySelectorAll('.str-booking-widget[data-property-id]').forEach(watchWidget);
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', init);
+	} else {
+		init();
+		// Also watch for React to mount the widget after DOMContentLoaded
+		var bodyOb = new MutationObserver(function (_, obs) {
+			var widgets = document.querySelectorAll('.str-booking-widget[data-property-id]');
+			if (widgets.length) { init(); obs.disconnect(); }
+		});
+		bodyOb.observe(document.body, { childList: true, subtree: true });
+	}
+})();
+JS;
 	}
 
 	/**
