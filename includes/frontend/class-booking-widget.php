@@ -118,7 +118,8 @@ class BookingWidget {
 		wp_add_inline_style(
 			'str-booking-widget',
 			'.str-bk-cal-day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.str-bk-price { display: block; font-size: 10px; line-height: 1; margin-top: 2px; opacity: 0.75; pointer-events: none; white-space: nowrap; }'
+.str-bk-price { display: block; font-size: 10px; line-height: 1; margin-top: 2px; opacity: 0.75; pointer-events: none; white-space: nowrap; }
+.str-bk-cal-day--blocked { pointer-events: none !important; cursor: not-allowed !important; }'
 		);
 
 		wp_add_inline_script(
