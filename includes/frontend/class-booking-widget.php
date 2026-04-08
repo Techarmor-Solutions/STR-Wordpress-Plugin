@@ -163,48 +163,62 @@ class BookingWidget {
 			priceCache[cacheKey] = map;
 			cb(map);
 		})
-		.catch(function () {});
+		.catch(function () { cb({}); });
 	}
 
-	function injectPrices(container, propertyId) {
+	// Inject prices into day cells. Calls done() when finished so the caller
+	// can safely re-enable its MutationObserver after DOM writes are complete.
+	function injectPrices(container, propertyId, done) {
 		var days = container.querySelectorAll('.str-bk-cal-day:not(.str-bk-cal-day--empty)');
-		if (!days.length) return;
+		if (!days.length) { done && done(); return; }
 		var firstDate = null;
 		days.forEach(function (d) { if (!firstDate) firstDate = d.getAttribute('aria-label'); });
-		if (!firstDate || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate)) return;
+		if (!firstDate || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate)) { done && done(); return; }
 		var parts = firstDate.split('-');
 		fetchPrices(propertyId, parseInt(parts[0]), parseInt(parts[1]), function (map) {
 			days.forEach(function (day) {
 				var dateStr = day.getAttribute('aria-label');
 				if (!dateStr) return;
-				var existing = day.querySelector('.str-bk-price');
-				if (existing) existing.remove();
+				// Skip cells that already have the correct price to avoid extra DOM writes.
 				var price = map[dateStr];
-				if (price) {
+				var formatted = price ? fmt(price) : '';
+				var existing = day.querySelector('.str-bk-price');
+				if (existing) {
+					if (existing.textContent === formatted) return; // already correct
+					existing.remove();
+				}
+				if (formatted) {
 					var span = document.createElement('span');
 					span.className = 'str-bk-price';
-					span.textContent = fmt(price);
+					span.textContent = formatted;
 					day.appendChild(span);
 				}
 			});
+			done && done();
 		});
 	}
 
 	function watchWidget(widget) {
 		var propertyId = widget.getAttribute('data-property-id');
 		if (!propertyId) return;
-		var lastTitle = '';
+		var lastTitle = null;
+
 		var ob = new MutationObserver(function () {
 			var cal = widget.querySelector('.str-bk-calendar');
 			if (!cal) return;
 			var titleEl = cal.querySelector('.str-bk-cal-title');
 			var title = titleEl ? titleEl.textContent : '';
-			if (title !== lastTitle) { lastTitle = title; injectPrices(cal, propertyId); }
-			else { injectPrices(cal, propertyId); }
+			// Only act when the displayed month actually changes.
+			if (title === lastTitle) return;
+			lastTitle = title;
+			// Pause observer while writing to DOM to prevent infinite loop.
+			ob.disconnect();
+			injectPrices(cal, propertyId, function () {
+				ob.observe(widget, { childList: true, subtree: true });
+			});
 		});
+
 		ob.observe(widget, { childList: true, subtree: true });
-		var cal = widget.querySelector('.str-bk-calendar');
-		if (cal) injectPrices(cal, propertyId);
 	}
 
 	function init() {
@@ -214,13 +228,15 @@ class BookingWidget {
 	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', init);
 	} else {
-		init();
-		// Also watch for React to mount the widget after DOMContentLoaded
+		// React may not have mounted yet — watch body for the widget container.
 		var bodyOb = new MutationObserver(function (_, obs) {
-			var widgets = document.querySelectorAll('.str-booking-widget[data-property-id]');
-			if (widgets.length) { init(); obs.disconnect(); }
+			if (document.querySelector('.str-booking-widget[data-property-id]')) {
+				obs.disconnect();
+				init();
+			}
 		});
 		bodyOb.observe(document.body, { childList: true, subtree: true });
+		init();
 	}
 })();
 JS;
