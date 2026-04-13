@@ -38,6 +38,13 @@ class CalendarSync {
 	 * Note: flush_rewrite_rules() is called only on activation, not here.
 	 */
 	public function register_rewrite_rules(): void {
+		// Accepts both /str-calendar/{id}.ics (preferred, for external platforms) and /str-calendar/{id}/ (legacy).
+		add_rewrite_rule(
+			'^str-calendar/([0-9]+)\.ics$',
+			'index.php?str_ical_property_id=$matches[1]',
+			'top'
+		);
+
 		add_rewrite_rule(
 			'^str-calendar/([0-9]+)/?$',
 			'index.php?str_ical_property_id=$matches[1]',

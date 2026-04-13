@@ -224,7 +224,7 @@ class CalendarSyncSettings {
 
 			<?php foreach ( $properties as $property ) :
 				$feeds       = STRBooking::get_instance()->calendar_sync->get_feeds( $property->ID );
-				$export_url  = home_url( '/str-calendar/' . $property->ID . '/' );
+				$export_url  = home_url( '/str-calendar/' . $property->ID . '.ics' );
 				$is_open     = ( $active_prop === $property->ID );
 			?>
 
