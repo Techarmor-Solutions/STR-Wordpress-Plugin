@@ -261,6 +261,87 @@ class PublicAPI extends \WP_REST_Controller {
 				),
 			)
 		);
+
+		// --- Messaging endpoints ---
+
+		// GET /messages/{token} — guest fetches thread
+		// POST /messages/{token} — guest sends a message
+		register_rest_route(
+			$this->namespace,
+			'/messages/(?P<token>[a-f0-9]{32})',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_guest_messages' ),
+					'permission_callback' => array( $this, 'verify_message_token' ),
+					'args'                => array( 'token' => array( 'required' => true, 'type' => 'string' ) ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'post_guest_message' ),
+					'permission_callback' => array( $this, 'verify_message_token' ),
+					'args'                => array(
+						'token'   => array( 'required' => true, 'type' => 'string' ),
+						'message' => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_textarea_field' ),
+					),
+				),
+			)
+		);
+
+		// GET /admin/messages — host fetches conversation list
+		register_rest_route(
+			$this->namespace,
+			'/admin/messages',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'get_admin_conversations' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' ) || current_user_can( 'str_booking_access' );
+				},
+			)
+		);
+
+		// GET /admin/messages/{booking_id} — host fetches thread
+		// POST /admin/messages/{booking_id} — host sends a reply
+		register_rest_route(
+			$this->namespace,
+			'/admin/messages/(?P<booking_id>[\d]+)',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_admin_thread' ),
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' ) || current_user_can( 'str_booking_access' );
+					},
+					'args' => array( 'booking_id' => array( 'required' => true, 'type' => 'integer' ) ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'post_host_message' ),
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' ) || current_user_can( 'str_booking_access' );
+					},
+					'args' => array(
+						'booking_id' => array( 'required' => true, 'type' => 'integer' ),
+						'message'    => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_textarea_field' ),
+					),
+				),
+			)
+		);
+
+		// POST /admin/messages/{booking_id}/read — mark thread as read
+		register_rest_route(
+			$this->namespace,
+			'/admin/messages/(?P<booking_id>[\d]+)/read',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'mark_thread_read' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' ) || current_user_can( 'str_booking_access' );
+				},
+				'args' => array( 'booking_id' => array( 'required' => true, 'type' => 'integer' ) ),
+			)
+		);
 	}
 
 	/**
@@ -1140,5 +1221,167 @@ class PublicAPI extends \WP_REST_Controller {
 		}
 
 		return true;
+	}
+
+	// -------------------------------------------------------------------------
+	// Messaging endpoints
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Permission check for guest messaging endpoints — validates the URL token.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return bool|\WP_Error
+	 */
+	public function verify_message_token( \WP_REST_Request $request ): bool|\WP_Error {
+		$token      = $request->get_param( 'token' );
+		$messaging  = \STRBooking\STRBooking::get_instance()->messaging;
+		$booking_id = $messaging->get_booking_by_token( $token );
+
+		if ( ! $booking_id ) {
+			return new \WP_Error( 'forbidden', 'Invalid or expired messaging link.', array( 'status' => 403 ) );
+		}
+
+		return true;
+	}
+
+	/**
+	 * GET /messages/{token} — return the thread for a guest.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response
+	 */
+	public function get_guest_messages( \WP_REST_Request $request ): \WP_REST_Response {
+		$token      = $request->get_param( 'token' );
+		$messaging  = \STRBooking\STRBooking::get_instance()->messaging;
+		$booking_id = $messaging->get_booking_by_token( $token );
+		$guest_name = get_post_meta( $booking_id, 'str_guest_name', true );
+
+		return rest_ensure_response( array(
+			'booking_id' => $booking_id,
+			'guest_name' => $guest_name,
+			'messages'   => $messaging->get_messages( $booking_id ),
+		) );
+	}
+
+	/**
+	 * POST /messages/{token} — guest sends a message.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function post_guest_message( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		$token   = $request->get_param( 'token' );
+		$message = sanitize_textarea_field( $request->get_param( 'message' ) );
+
+		if ( empty( $message ) ) {
+			return new \WP_Error( 'empty_message', 'Message cannot be empty.', array( 'status' => 400 ) );
+		}
+
+		$messaging  = \STRBooking\STRBooking::get_instance()->messaging;
+		$booking_id = $messaging->get_booking_by_token( $token );
+		$id         = $messaging->send_message( $booking_id, 'guest', $message );
+
+		return rest_ensure_response( array( 'id' => $id ) );
+	}
+
+	/**
+	 * GET /admin/messages — return all conversations for the host inbox.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response
+	 */
+	public function get_admin_conversations( \WP_REST_Request $request ): \WP_REST_Response {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'str_messages';
+
+		// Get the most recent message per booking, with unread status.
+		$rows = $wpdb->get_results(
+			"SELECT m.booking_id,
+			        m.message      AS last_message,
+			        m.created_at   AS last_message_at,
+			        m.sender       AS last_sender,
+			        SUM( CASE WHEN m2.sender = 'guest' AND m2.read_at IS NULL THEN 1 ELSE 0 END ) AS unread_count
+			 FROM {$table} m
+			 INNER JOIN {$table} m2 ON m2.booking_id = m.booking_id
+			 WHERE m.id = (
+			     SELECT id FROM {$table} m3
+			     WHERE m3.booking_id = m.booking_id
+			     ORDER BY created_at DESC LIMIT 1
+			 )
+			 GROUP BY m.booking_id, m.message, m.created_at, m.sender
+			 ORDER BY m.created_at DESC",
+			ARRAY_A
+		) ?: array();
+
+		$conversations = array();
+		foreach ( $rows as $row ) {
+			$bid          = (int) $row['booking_id'];
+			$property_id  = (int) get_post_meta( $bid, 'str_property_id', true );
+			$conversations[] = array(
+				'booking_id'      => $bid,
+				'guest_name'      => get_post_meta( $bid, 'str_guest_name', true ),
+				'property_name'   => get_the_title( $property_id ) ?: '—',
+				'last_message'    => $row['last_message'],
+				'last_message_at' => $row['last_message_at'],
+				'has_unread'      => (int) $row['unread_count'] > 0,
+			);
+		}
+
+		return rest_ensure_response( $conversations );
+	}
+
+	/**
+	 * GET /admin/messages/{booking_id} — return full thread for a booking.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function get_admin_thread( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		$booking_id = (int) $request->get_param( 'booking_id' );
+		$messaging  = \STRBooking\STRBooking::get_instance()->messaging;
+		$guest_name = get_post_meta( $booking_id, 'str_guest_name', true );
+
+		return rest_ensure_response( array(
+			'booking_id' => $booking_id,
+			'guest_name' => $guest_name,
+			'messages'   => $messaging->get_messages( $booking_id ),
+		) );
+	}
+
+	/**
+	 * POST /admin/messages/{booking_id} — host sends a reply.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function post_host_message( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		$booking_id = (int) $request->get_param( 'booking_id' );
+		$message    = sanitize_textarea_field( $request->get_param( 'message' ) );
+
+		if ( empty( $message ) ) {
+			return new \WP_Error( 'empty_message', 'Message cannot be empty.', array( 'status' => 400 ) );
+		}
+
+		$messaging = \STRBooking\STRBooking::get_instance()->messaging;
+		$id        = $messaging->send_message( $booking_id, 'host', $message );
+
+		// Mark guest messages as read since the host just viewed and replied.
+		$messaging->mark_read( $booking_id, 'host' );
+
+		return rest_ensure_response( array( 'id' => $id ) );
+	}
+
+	/**
+	 * POST /admin/messages/{booking_id}/read — mark guest messages as read.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response
+	 */
+	public function mark_thread_read( \WP_REST_Request $request ): \WP_REST_Response {
+		$booking_id = (int) $request->get_param( 'booking_id' );
+		\STRBooking\STRBooking::get_instance()->messaging->mark_read( $booking_id, 'host' );
+		return rest_ensure_response( array( 'success' => true ) );
 	}
 }

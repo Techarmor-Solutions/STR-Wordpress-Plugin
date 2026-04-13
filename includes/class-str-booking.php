@@ -12,6 +12,7 @@ namespace STRBooking;
 
 use STRBooking\Admin\AdminDashboard;
 use STRBooking\Admin\CalendarSyncSettings;
+use STRBooking\Admin\MessagesAdmin;
 use STRBooking\Admin\NotificationSettings;
 use STRBooking\Admin\PricingCalendar;
 use STRBooking\Admin\PropertyManager;
@@ -20,6 +21,7 @@ use STRBooking\Frontend\BookingWidget;
 use STRBooking\Frontend\CalendarWidget;
 use STRBooking\Frontend\PublicAPI;
 use STRBooking\LicenseManager;
+use STRBooking\Messaging;
 use STRBooking\PluginUpdater;
 use STRBooking\SquareHandler;
 
@@ -130,6 +132,16 @@ class STRBooking {
 	public PricingCalendar $pricing_calendar;
 
 	/**
+	 * @var Messaging
+	 */
+	public Messaging $messaging;
+
+	/**
+	 * @var MessagesAdmin
+	 */
+	public MessagesAdmin $messages_admin;
+
+	/**
 	 * @var LicenseManager
 	 */
 	public LicenseManager $license_manager;
@@ -172,6 +184,8 @@ class STRBooking {
 		$this->plugin_updater          = new PluginUpdater( STR_BOOKING_PLUGIN_DIR . 'str-direct-booking.php' );
 		$this->square_handler          = new SquareHandler();
 		$this->pricing_calendar        = new PricingCalendar();
+		$this->messaging               = new Messaging();
+		$this->messages_admin          = new MessagesAdmin( $this->messaging );
 	}
 
 	/**

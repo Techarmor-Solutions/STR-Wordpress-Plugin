@@ -62,6 +62,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         📅 Add to Google Calendar
       </a>
     </div>
+    <div style="text-align: center; margin: 8px 0 32px;">
+      <a href="{message_url}" target="_blank" rel="noopener noreferrer"
+         style="display: inline-block; background: #1a1a2e; color: #fff; text-decoration: none;
+                font-size: 15px; font-weight: 600; padding: 12px 24px; border-radius: 6px;">
+        💬 Message Your Host
+      </a>
+    </div>
 
     <p style="margin-top: 24px;">You'll receive check-in instructions 3 days before your arrival. If you have questions before then, contact your host at {host_phone}.</p>
   </div>

@@ -83,9 +83,23 @@ class DatabaseManager {
   KEY sync_status (sync_status)
 ) $charset_collate;";
 
+		// wp_str_messages — guest-host messaging threads per booking
+		$sql_messages = "CREATE TABLE {$wpdb->prefix}str_messages (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  booking_id bigint(20) unsigned NOT NULL,
+  sender varchar(10) NOT NULL DEFAULT 'guest',
+  message text NOT NULL,
+  created_at datetime DEFAULT CURRENT_TIMESTAMP,
+  read_at datetime DEFAULT NULL,
+  PRIMARY KEY  (id),
+  KEY booking_id (booking_id),
+  KEY created_at (created_at)
+) $charset_collate;";
+
 		dbDelta( $sql_availability );
 		dbDelta( $sql_cohosts );
 		dbDelta( $sql_calendar_imports );
+		dbDelta( $sql_messages );
 
 		// Run any pending migrations
 		self::run_migrations( $current_version );

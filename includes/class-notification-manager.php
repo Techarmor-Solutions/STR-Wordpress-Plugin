@@ -88,6 +88,10 @@ class NotificationManager {
 		add_action( 'str_send_notification', array( $this, 'dispatch_notification' ), 10, 2 );
 		add_action( 'str_installment_paid', array( $this, 'send_payment_received' ), 10, 3 );
 		add_action( 'str_installment_failed', array( $this, 'handle_installment_failed' ), 10, 3 );
+
+		// Messaging notifications
+		add_action( 'str_guest_message_sent', array( $this, 'notify_host_of_message' ), 10, 2 );
+		add_action( 'str_host_message_sent',  array( $this, 'notify_guest_of_reply' ),  10, 2 );
 	}
 
 	/**
@@ -419,6 +423,7 @@ class NotificationManager {
 			'{installment_number}'   => $installment_number,
 			'{payment_plan_type}'    => esc_html( $payment_plan_labels[ $payment_plan ] ?? $payment_plan ),
 			'{google_calendar_url}'  => esc_url( $this->build_google_calendar_url( $booking, $property_id ) ),
+			'{message_url}'          => esc_url( \STRBooking\STRBooking::get_instance()->messaging->get_message_url( (int) $booking['id'] ) ),
 		);
 
 		return str_replace( array_keys( $replacements ), array_values( $replacements ), $template );
@@ -528,5 +533,93 @@ class NotificationManager {
 			'check_in_time'  => get_post_meta( $property_id, 'str_check_in_time', true ),
 			'check_out_time' => get_post_meta( $property_id, 'str_check_out_time', true ),
 		);
+	}
+
+	// -------------------------------------------------------------------------
+	// Messaging notifications
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Notify the host when a guest sends a message.
+	 * Hooked into str_guest_message_sent.
+	 *
+	 * @param int    $booking_id Booking post ID.
+	 * @param string $message    Guest's message text.
+	 */
+	public function notify_host_of_message( int $booking_id, string $message ): void {
+		$property_id   = (int) get_post_meta( $booking_id, 'str_property_id', true );
+		$guest_name    = get_post_meta( $booking_id, 'str_guest_name', true );
+		$property_name = get_the_title( $property_id );
+
+		// Determine host email (same logic as send_email_notification).
+		$host_email = get_post_meta( $property_id, 'str_from_email', true )
+			?: get_option( 'str_booking_from_email', get_option( 'admin_email' ) );
+
+		if ( ! $host_email ) {
+			return;
+		}
+
+		$inbox_url = admin_url( 'admin.php?page=str-booking-messages&booking_id=' . $booking_id );
+		$subject   = sprintf( __( 'New message from %s — %s', 'str-direct-booking' ), $guest_name, $property_name );
+
+		$body = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f5f5f5">'
+			. '<div style="background:#fff;border-radius:8px;padding:32px;border:1px solid #e5e5e5">'
+			. '<h2 style="margin:0 0 8px;font-size:18px;color:#1a1a2e">💬 New message from ' . esc_html( $guest_name ) . '</h2>'
+			. '<p style="margin:0 0 20px;font-size:13px;color:#888">' . esc_html( $property_name ) . '</p>'
+			. '<blockquote style="margin:0 0 24px;padding:14px 18px;background:#f8f9fa;border-left:3px solid #1a1a2e;border-radius:4px;font-size:15px;color:#333">'
+			. nl2br( esc_html( $message ) )
+			. '</blockquote>'
+			. '<a href="' . esc_url( $inbox_url ) . '" style="display:inline-block;background:#1a1a2e;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600">View &amp; Reply →</a>'
+			. '</div></div>';
+
+		wp_mail( $host_email, $subject, $body, array( 'Content-Type: text/html; charset=UTF-8' ) );
+	}
+
+	/**
+	 * Notify the guest when the host sends a reply.
+	 * Hooked into str_host_message_sent.
+	 *
+	 * @param int    $booking_id Booking post ID.
+	 * @param string $message    Host's reply text.
+	 */
+	public function notify_guest_of_reply( int $booking_id, string $message ): void {
+		$property_id   = (int) get_post_meta( $booking_id, 'str_property_id', true );
+		$guest_email   = get_post_meta( $booking_id, 'str_guest_email', true );
+		$guest_name    = get_post_meta( $booking_id, 'str_guest_name', true );
+		$property_name = get_the_title( $property_id );
+
+		if ( ! $guest_email ) {
+			return;
+		}
+
+		$messaging     = \STRBooking\STRBooking::get_instance()->messaging;
+		$message_url   = $messaging->get_message_url( $booking_id );
+
+		$from_name  = get_post_meta( $property_id, 'str_from_name', true )
+			?: get_option( 'str_booking_from_name', get_bloginfo( 'name' ) );
+		$from_email = get_post_meta( $property_id, 'str_from_email', true )
+			?: get_option( 'str_booking_from_email', get_option( 'admin_email' ) );
+
+		$subject = sprintf( __( 'Reply from your host — %s', 'str-direct-booking' ), $property_name );
+
+		$body = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f5f5f5">'
+			. '<div style="background:#fff;border-radius:8px;padding:32px;border:1px solid #e5e5e5">'
+			. '<h2 style="margin:0 0 8px;font-size:18px;color:#1a1a2e">💬 ' . esc_html__( 'Your host replied', 'str-direct-booking' ) . '</h2>'
+			. '<p style="margin:0 0 20px;font-size:13px;color:#888">Hi ' . esc_html( $guest_name ) . ', you have a new reply from your host at ' . esc_html( $property_name ) . '.</p>'
+			. '<blockquote style="margin:0 0 24px;padding:14px 18px;background:#1a1a2e;border-radius:8px;font-size:15px;color:#fff">'
+			. nl2br( esc_html( $message ) )
+			. '</blockquote>'
+			. ( $message_url
+				? '<a href="' . esc_url( $message_url ) . '" style="display:inline-block;background:#1a1a2e;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600">View conversation →</a>'
+				: ''
+			)
+			. '</div></div>';
+
+		$headers = array(
+			'Content-Type: text/html; charset=UTF-8',
+			'From: ' . $from_name . ' <' . $from_email . '>',
+		);
+
+		wp_mail( $guest_email, $subject, $body, $headers );
 	}
 }
