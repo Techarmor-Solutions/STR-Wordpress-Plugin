@@ -55,7 +55,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       </div>
     </div>
 
-    <p style="margin-top: 32px;">You'll receive check-in instructions 3 days before your arrival. If you have questions before then, contact your host at {host_phone}.</p>
+    <div style="text-align: center; margin: 32px 0 8px;">
+      <a href="{google_calendar_url}" target="_blank" rel="noopener noreferrer"
+         style="display: inline-block; background: #4285f4; color: #fff; text-decoration: none;
+                font-size: 15px; font-weight: 600; padding: 12px 24px; border-radius: 6px;">
+        📅 Add to Google Calendar
+      </a>
+    </div>
+
+    <p style="margin-top: 24px;">You'll receive check-in instructions 3 days before your arrival. If you have questions before then, contact your host at {host_phone}.</p>
   </div>
   <div class="footer">
     <p>This email was sent to {guest_email}. If you have questions, reply to this email.</p>

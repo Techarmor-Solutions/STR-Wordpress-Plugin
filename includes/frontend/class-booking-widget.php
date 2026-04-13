@@ -127,6 +127,12 @@ class BookingWidget {
 			$this->get_price_injection_script(),
 			'after'
 		);
+
+		wp_add_inline_script(
+			'str-booking-widget',
+			$this->get_add_to_calendar_script(),
+			'after'
+		);
 	}
 
 	/**
@@ -230,6 +236,141 @@ class BookingWidget {
 		document.addEventListener('DOMContentLoaded', init);
 	} else {
 		// React may not have mounted yet — watch body for the widget container.
+		var bodyOb = new MutationObserver(function (_, obs) {
+			if (document.querySelector('.str-booking-widget[data-property-id]')) {
+				obs.disconnect();
+				init();
+			}
+		});
+		bodyOb.observe(document.body, { childList: true, subtree: true });
+		init();
+	}
+})();
+JS;
+	}
+
+	/**
+	 * Returns the vanilla-JS snippet that injects an "Add to Google Calendar"
+	 * button on the booking confirmation screen.
+	 */
+	private function get_add_to_calendar_script(): string {
+		return <<<'JS'
+(function () {
+	var property = window.strBookingProperty || {};
+	var propertyName = property.name || 'Property';
+
+	function toGoogleDate(dateText) {
+		// dateText is formatted by React as e.g. "Wednesday, April 15, 2026"
+		var d = new Date(dateText);
+		if (isNaN(d.getTime())) return null;
+		var y = d.getFullYear();
+		var m = String(d.getMonth() + 1).padStart(2, '0');
+		var day = String(d.getDate()).padStart(2, '0');
+		return '' + y + m + day;
+	}
+
+	function buildGCalUrl(checkInText, checkOutText, bookingId) {
+		var startDate = toGoogleDate(checkInText);
+		if (!startDate) return null;
+
+		// End date: add 1 day to checkout so it's visible on the calendar
+		// (Google Calendar all-day events use an exclusive end date)
+		var checkOutD = new Date(checkOutText);
+		if (isNaN(checkOutD.getTime())) return null;
+		checkOutD.setDate(checkOutD.getDate() + 1);
+		var endY = checkOutD.getFullYear();
+		var endM = String(checkOutD.getMonth() + 1).padStart(2, '0');
+		var endDay = String(checkOutD.getDate()).padStart(2, '0');
+		var endDate = '' + endY + endM + endDay;
+
+		var text = encodeURIComponent('Stay at ' + propertyName);
+		var details = bookingId ? encodeURIComponent('Booking #' + bookingId) : '';
+		var dates = startDate + '/' + endDate;
+
+		return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + text + '&dates=' + dates + (details ? '&details=' + details : '');
+	}
+
+	function injectButton(confirmEl) {
+		if (confirmEl.querySelector('.str-gcal-btn')) return; // already injected
+
+		// Extract dates from the confirmation detail rows
+		var rows = confirmEl.querySelectorAll('.str-confirmation-details .str-detail-row');
+		var checkInText = '', checkOutText = '';
+		rows.forEach(function (row) {
+			var spans = row.querySelectorAll('span');
+			if (spans.length < 2) return;
+			var label = spans[0].textContent.trim().toLowerCase();
+			var value = spans[1].textContent.trim();
+			if (label === 'check-in')  checkInText  = value;
+			if (label === 'check-out') checkOutText = value;
+		});
+
+		if (!checkInText || !checkOutText) return;
+
+		// Extract booking ID from e.g. "Booking #42"
+		var numEl = confirmEl.querySelector('.str-confirmation-number');
+		var bookingId = '';
+		if (numEl) {
+			var match = numEl.textContent.match(/#(\d+)/);
+			if (match) bookingId = match[1];
+		}
+
+		var url = buildGCalUrl(checkInText, checkOutText, bookingId);
+		if (!url) return;
+
+		var btn = document.createElement('a');
+		btn.className = 'str-gcal-btn';
+		btn.href = url;
+		btn.target = '_blank';
+		btn.rel = 'noopener noreferrer';
+		btn.textContent = '📅 Add to Google Calendar';
+		btn.style.cssText = [
+			'display:inline-block',
+			'margin:24px auto 8px',
+			'padding:11px 22px',
+			'background:#4285f4',
+			'color:#fff',
+			'font-size:14px',
+			'font-weight:600',
+			'border-radius:6px',
+			'text-decoration:none',
+			'cursor:pointer',
+		].join(';');
+
+		// Insert before the "next steps" paragraph
+		var nextP = confirmEl.querySelector('.str-confirmation-next');
+		if (nextP) {
+			// Wrap in a centered div
+			var wrap = document.createElement('div');
+			wrap.style.cssText = 'text-align:center;margin:8px 0';
+			wrap.appendChild(btn);
+			confirmEl.insertBefore(wrap, nextP);
+		} else {
+			confirmEl.appendChild(btn);
+		}
+	}
+
+	function watchForConfirmation(widget) {
+		var ob = new MutationObserver(function () {
+			var confirmEl = widget.querySelector('.str-confirmation');
+			if (confirmEl) {
+				injectButton(confirmEl);
+			}
+		});
+		ob.observe(widget, { childList: true, subtree: true });
+
+		// Also check immediately in case it's already rendered
+		var confirmEl = widget.querySelector('.str-confirmation');
+		if (confirmEl) injectButton(confirmEl);
+	}
+
+	function init() {
+		document.querySelectorAll('.str-booking-widget[data-property-id]').forEach(watchForConfirmation);
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', init);
+	} else {
 		var bodyOb = new MutationObserver(function (_, obs) {
 			if (document.querySelector('.str-booking-widget[data-property-id]')) {
 				obs.disconnect();

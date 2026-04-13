@@ -418,9 +418,40 @@ class NotificationManager {
 			'{installment_due_date}' => esc_html( $installment_due_date ),
 			'{installment_number}'   => $installment_number,
 			'{payment_plan_type}'    => esc_html( $payment_plan_labels[ $payment_plan ] ?? $payment_plan ),
+			'{google_calendar_url}'  => esc_url( $this->build_google_calendar_url( $booking, $property_id ) ),
 		);
 
 		return str_replace( array_keys( $replacements ), array_values( $replacements ), $template );
+	}
+
+	/**
+	 * Build a Google Calendar "Add to Calendar" URL for a booking.
+	 *
+	 * Uses an all-day event spanning check-in through checkout (end date is
+	 * exclusive in Google Calendar, so checkout day itself is the boundary).
+	 *
+	 * @param array $booking     Booking data array.
+	 * @param int   $property_id Property post ID.
+	 * @return string Google Calendar URL.
+	 */
+	private function build_google_calendar_url( array $booking, int $property_id ): string {
+		$property_name = get_the_title( $property_id );
+
+		$check_in  = new \DateTime( $booking['check_in'] );
+		$check_out = new \DateTime( $booking['check_out'] );
+		// Google Calendar all-day end date is exclusive, so add 1 day so the
+		// checkout date itself is visible on the guest's calendar.
+		$check_out->modify( '+1 day' );
+
+		return add_query_arg(
+			array(
+				'action'  => 'TEMPLATE',
+				'text'    => 'Stay at ' . $property_name,
+				'dates'   => $check_in->format( 'Ymd' ) . '/' . $check_out->format( 'Ymd' ),
+				'details' => 'Booking #' . $booking['id'],
+			),
+			'https://calendar.google.com/calendar/render'
+		);
 	}
 
 	/**
