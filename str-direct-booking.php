@@ -56,6 +56,12 @@ register_deactivation_hook(
 add_action(
 	'plugins_loaded',
 	function () {
+		// Run DB install/upgrade on every load — safe no-op when already current.
+		// This ensures new tables are created when the plugin is updated without
+		// deactivation/reactivation (WordPress does not re-fire the activation hook
+		// on auto-updates or manual file replacements).
+		DatabaseManager::install();
+
 		STRBooking::get_instance();
 	},
 	10
