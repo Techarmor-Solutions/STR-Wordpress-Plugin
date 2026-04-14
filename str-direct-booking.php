@@ -3,7 +3,7 @@
  * Plugin Name:       STR Direct Booking
  * Plugin URI:        https://github.com/str-direct-booking/plugin
  * Description:       Enable STR hosts to accept direct bookings, sync calendars with Airbnb/VRBO, split payments between co-hosts via Stripe Connect, and retain guest data.
- * Version:           1.3.0
+ * Version:           1.3.1
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            STR Direct Booking
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'STR_BOOKING_VERSION', '1.3.0' );
+define( 'STR_BOOKING_VERSION', '1.3.1' );
 define( 'STR_BOOKING_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'STR_BOOKING_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'STR_BOOKING_DB_VERSION', '1.3.0' );
@@ -63,6 +63,17 @@ add_action(
 		DatabaseManager::install();
 
 		STRBooking::get_instance();
+
+		// Flush rewrite rules once after a version change so the iCal feed URL
+		// and messaging page URL are always registered even after plugin updates
+		// that skip the activation hook.
+		$flushed_version = get_option( 'str_booking_rewrite_flushed', '' );
+		if ( $flushed_version !== STR_BOOKING_VERSION ) {
+			add_action( 'init', function () {
+				flush_rewrite_rules( false );
+				update_option( 'str_booking_rewrite_flushed', STR_BOOKING_VERSION );
+			}, 99 );
+		}
 	},
 	10
 );

@@ -113,6 +113,9 @@ class CalendarSync {
 		$past_bookings = $this->booking_manager->get_bookings_for_property( $property_id, $past_start, $start );
 		$bookings      = array_merge( $past_bookings, $bookings );
 
+		$dtstamp_params = [ 'VALUE' => 'DATE-TIME' ];
+		$date_params    = [ 'VALUE' => 'DATE' ];
+
 		foreach ( $bookings as $booking ) {
 			if ( is_wp_error( $booking ) ) {
 				continue;
@@ -123,11 +126,14 @@ class CalendarSync {
 			}
 
 			$vevent = $calendar->newVevent();
-			$vevent->setDtstart( new \DateTime( $booking['check_in'] ) );
-			$vevent->setDtend( new \DateTime( $booking['check_out'] ) );
-			$vevent->setSummary( 'Booked' );
+			// VALUE=DATE (all-day) is required by Airbnb and VRBO iCal parsers.
+			$vevent->setDtstart( $booking['check_in'], $date_params );
+			$vevent->setDtend( $booking['check_out'], $date_params );
+			$vevent->setSummary( 'Not available' );
+			$vevent->setStatus( 'CONFIRMED' );
 			$vevent->setUid( 'str-booking-' . $booking['id'] . '@' . parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ) );
 			$vevent->setDescription( 'Direct booking' );
+			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ), $dtstamp_params );
 		}
 
 		// Also export blocked dates from external imports
@@ -150,12 +156,16 @@ class CalendarSync {
 		$blocked_ranges = $this->group_consecutive_dates( array_column( $blocked, 'date' ) );
 
 		foreach ( $blocked_ranges as $range ) {
+			$end_dt = new \DateTime( $range['end'] );
+			$end_dt->modify( '+1 day' ); // DTEND is exclusive in iCal
+
 			$vevent = $calendar->newVevent();
-			$vevent->setDtstart( new \DateTime( $range['start'] ) );
-			// iCal DTEND is exclusive, so add 1 day to end
-			$vevent->setDtend( new \DateTime( $range['end'] . ' +1 day' ) );
+			$vevent->setDtstart( $range['start'], $date_params );
+			$vevent->setDtend( $end_dt->format( 'Y-m-d' ), $date_params );
 			$vevent->setSummary( 'Not available' );
+			$vevent->setStatus( 'CONFIRMED' );
 			$vevent->setUid( 'str-blocked-' . md5( $range['start'] . $range['end'] . $property_id ) . '@' . parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ) );
+			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ), $dtstamp_params );
 		}
 
 		return $calendar->createCalendar();
