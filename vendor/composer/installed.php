@@ -3,7 +3,7 @@
         'name' => 'str-direct-booking/plugin',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '931986fd3e540f20c8abd9396c6ecec02f8750e9',
+        'reference' => '8afcc7121e6b38691361a18a274d6f4aa3c8ea6f',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -22,7 +22,7 @@
         'str-direct-booking/plugin' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '931986fd3e540f20c8abd9396c6ecec02f8750e9',
+            'reference' => '8afcc7121e6b38691361a18a274d6f4aa3c8ea6f',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
