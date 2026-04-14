@@ -395,6 +395,21 @@ class PublicAPI extends \WP_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function create_booking( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		try {
+			return $this->create_booking_inner( $request );
+		} catch ( \Throwable $e ) {
+			error_log( 'STR Booking [create_booking] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString() );
+			return new \WP_Error( 'booking_exception', $e->getMessage(), array( 'status' => 500 ) );
+		}
+	}
+
+	/**
+	 * Inner implementation of create_booking — wrapped by create_booking() for error capture.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	private function create_booking_inner( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		$property_id = (int) $request->get_param( 'property_id' );
 		$check_in    = sanitize_text_field( $request->get_param( 'check_in' ) );
 		$check_out   = sanitize_text_field( $request->get_param( 'check_out' ) );
@@ -683,7 +698,11 @@ class PublicAPI extends \WP_REST_Controller {
 			);
 		}
 
-		do_action( 'str_booking_confirmed', $booking_id );
+		try {
+			do_action( 'str_booking_confirmed', $booking_id );
+		} catch ( \Throwable $e ) {
+			error_log( 'STR Booking [str_booking_confirmed hook] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
+		}
 
 		return rest_ensure_response( array( 'status' => 'confirmed', 'booking_id' => $booking_id ) );
 	}
