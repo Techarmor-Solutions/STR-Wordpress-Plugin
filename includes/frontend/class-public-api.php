@@ -976,7 +976,7 @@ class PublicAPI extends \WP_REST_Controller {
 	 * @param \WP_REST_Request $request
 	 * @return bool|\WP_Error
 	 */
-	public function check_booking_rate_limit( \WP_REST_Request $request ): bool|\WP_Error {
+	public function check_booking_rate_limit(): bool|\WP_Error {
 		$ip  = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' );
 		$key = 'str_rate_limit_' . md5( $ip );
 
