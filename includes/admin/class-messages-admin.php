@@ -128,7 +128,12 @@ class MessagesAdmin {
 			function apiFetch(path, opts) {
 				opts = opts || {};
 				opts.headers = Object.assign({ 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' }, opts.headers || {});
-				return fetch(apiUrl + path, opts).then(function(r) { return r.json(); });
+				var isGet = !opts.method || opts.method.toUpperCase() === 'GET';
+				var url = apiUrl + path + (isGet ? (path.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now() : '');
+				return fetch(url, opts).then(function(r) {
+					if (!r.ok) { return r.json().then(function(d) { return Promise.reject(d); }); }
+					return r.json();
+				});
 			}
 
 			function timeAgo(dateStr) {
@@ -210,9 +215,11 @@ class MessagesAdmin {
 						sendBtn.textContent = 'Send';
 						loadThread(activeBid);
 						loadConversations();
-					}).catch(function() {
+					}).catch(function(err) {
 						sendBtn.disabled = false;
 						sendBtn.textContent = 'Send';
+						var msg = (err && err.message) ? err.message : 'Could not send reply. Please try again.';
+						alert(msg);
 					});
 				});
 			}
@@ -221,9 +228,12 @@ class MessagesAdmin {
 			loadConversations();
 			if (activeBid) {
 				loadThread(activeBid);
-				// Refresh thread every 30 seconds
-				setInterval(function() { loadThread(activeBid); }, 30000);
 			}
+			// Refresh thread and conversation list every 20 seconds
+			setInterval(function() {
+				loadConversations();
+				if (activeBid) { loadThread(activeBid); }
+			}, 20000);
 		})();
 		</script>
 		<?php

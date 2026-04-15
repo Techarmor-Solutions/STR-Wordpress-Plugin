@@ -1274,13 +1274,24 @@ class PublicAPI extends \WP_REST_Controller {
 		$token      = $request->get_param( 'token' );
 		$messaging  = \STRBooking\STRBooking::get_instance()->messaging;
 		$booking_id = $messaging->get_booking_by_token( $token );
+
+		if ( ! $booking_id ) {
+			$response = rest_ensure_response( array( 'booking_id' => null, 'guest_name' => '', 'messages' => array() ) );
+			$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+			$response->header( 'Pragma', 'no-cache' );
+			return $response;
+		}
+
 		$guest_name = get_post_meta( $booking_id, 'str_guest_name', true );
 
-		return rest_ensure_response( array(
+		$response = rest_ensure_response( array(
 			'booking_id' => $booking_id,
 			'guest_name' => $guest_name,
 			'messages'   => $messaging->get_messages( $booking_id ),
 		) );
+		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+		$response->header( 'Pragma', 'no-cache' );
+		return $response;
 	}
 
 	/**
@@ -1345,7 +1356,10 @@ class PublicAPI extends \WP_REST_Controller {
 		);
 
 		if ( empty( $rows ) ) {
-			return rest_ensure_response( array() );
+			$empty = rest_ensure_response( array() );
+			$empty->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+			$empty->header( 'Pragma', 'no-cache' );
+			return $empty;
 		}
 
 		$conversations = array();
@@ -1363,7 +1377,10 @@ class PublicAPI extends \WP_REST_Controller {
 			);
 		}
 
-		return rest_ensure_response( $conversations );
+		$response = rest_ensure_response( $conversations );
+		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+		$response->header( 'Pragma', 'no-cache' );
+		return $response;
 	}
 
 	/**
@@ -1377,11 +1394,14 @@ class PublicAPI extends \WP_REST_Controller {
 		$messaging  = \STRBooking\STRBooking::get_instance()->messaging;
 		$guest_name = get_post_meta( $booking_id, 'str_guest_name', true );
 
-		return rest_ensure_response( array(
+		$response = rest_ensure_response( array(
 			'booking_id' => $booking_id,
 			'guest_name' => $guest_name,
 			'messages'   => $messaging->get_messages( $booking_id ),
 		) );
+		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+		$response->header( 'Pragma', 'no-cache' );
+		return $response;
 	}
 
 	/**

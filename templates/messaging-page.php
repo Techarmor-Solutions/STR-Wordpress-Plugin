@@ -112,7 +112,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 	}
 
 	function loadMessages() {
-		fetch(apiUrl + 'messages/' + token)
+		fetch(apiUrl + 'messages/' + token + '?_=' + Date.now())
 			.then(function(r) { return r.json(); })
 			.then(function(data) {
 				var thread = document.getElementById('str-msg-thread');
