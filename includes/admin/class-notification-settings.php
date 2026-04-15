@@ -86,7 +86,7 @@ class NotificationSettings {
 				'enabled'       => true,
 				'days_before'   => 0,
 				'email_subject' => __( 'Your booking is confirmed!', 'str-direct-booking' ),
-				'email_body'    => __( "Hi {guest_name},\n\nGreat news — your booking at {property_name} is confirmed!\n\nCheck-in: {check_in_date}\nCheck-out: {check_out_date}\nTotal: {total}\n\nWe look forward to hosting you!", 'str-direct-booking' ),
+				'email_body'    => __( "Hi {guest_name},\n\nGreat news — your booking at {property_name} is confirmed!\n\nCheck-in: {check_in_date}\nCheck-out: {check_out_date}\nTotal: {total}\n\n<a href=\"{google_calendar_url}\">Add to Google Calendar</a>\n\nHave questions or need anything? <a href=\"{message_url}\">Send us a message</a>.\n\nWe look forward to hosting you!", 'str-direct-booking' ),
 				'sms_body'      => __( "Hi {guest_name}, your booking at {property_name} is confirmed! Check-in: {check_in_date}. Reply STOP to unsubscribe.", 'str-direct-booking' ),
 			),
 			'booking_reminder'      => array(
@@ -247,6 +247,7 @@ class NotificationSettings {
 					&nbsp; {address} &nbsp; {door_code} &nbsp; {wifi_password} &nbsp; {host_phone}
 					&nbsp; {booking_id} &nbsp; {installment_amount} &nbsp; {installment_due_date}
 					&nbsp; {installment_number} &nbsp; {payment_plan_type}
+					&nbsp; {google_calendar_url} &nbsp; {message_url}
 				</p>
 			</div>
 
