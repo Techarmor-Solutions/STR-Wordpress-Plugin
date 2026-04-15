@@ -24,10 +24,40 @@ class BookingManager {
 	private const VALID_STATUSES = array( 'pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'refunded' );
 
 	/**
-	 * Constructor — register cron action.
+	 * Constructor — register cron action and status transition hook.
 	 */
 	public function __construct() {
 		add_action( 'str_expire_pending_bookings', array( $this, 'expire_pending_bookings' ) );
+		add_action( 'transition_post_status', array( $this, 'on_booking_status_transition' ), 10, 3 );
+	}
+
+	/**
+	 * Sync availability table whenever a booking post status changes.
+	 *
+	 * Handles status changes made via any path — the admin AJAX handler,
+	 * Stripe webhooks, or direct WP post-editor edits — so the availability
+	 * table is always consistent with the booking's actual status.
+	 *
+	 * @param string   $new_status New post status.
+	 * @param string   $old_status Previous post status.
+	 * @param \WP_Post $post       The post object.
+	 */
+	public function on_booking_status_transition( string $new_status, string $old_status, \WP_Post $post ): void {
+		if ( 'str_booking' !== $post->post_type || $new_status === $old_status ) {
+			return;
+		}
+
+		$property_id = (int) get_post_meta( $post->ID, 'str_property_id', true );
+		$check_in    = get_post_meta( $post->ID, 'str_check_in', true );
+		$check_out   = get_post_meta( $post->ID, 'str_check_out', true );
+
+		if ( ! $property_id || ! $check_in || ! $check_out ) {
+			return;
+		}
+
+		if ( in_array( $new_status, array( 'cancelled', 'refunded' ), true ) ) {
+			$this->mark_dates_available( $property_id, $check_in, $check_out );
+		}
 	}
 
 	/**

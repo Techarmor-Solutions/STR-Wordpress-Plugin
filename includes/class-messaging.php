@@ -114,7 +114,7 @@ class Messaging {
 		$posts = get_posts(
 			array(
 				'post_type'      => 'str_booking',
-				'post_status'    => 'any',
+				'post_status'    => array( 'pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'refunded' ),
 				'posts_per_page' => 1,
 				'fields'         => 'ids',
 				'meta_query'     => array(
