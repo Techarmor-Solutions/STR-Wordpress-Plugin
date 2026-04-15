@@ -1299,7 +1299,12 @@ class PublicAPI extends \WP_REST_Controller {
 
 		$messaging  = \STRBooking\STRBooking::get_instance()->messaging;
 		$booking_id = $messaging->get_booking_by_token( $token );
-		$id         = $messaging->send_message( $booking_id, 'guest', $message );
+
+		if ( ! $booking_id ) {
+			return new \WP_Error( 'forbidden', 'Invalid or expired messaging link.', array( 'status' => 403 ) );
+		}
+
+		$id = $messaging->send_message( $booking_id, 'guest', $message );
 
 		return rest_ensure_response( array( 'id' => $id ) );
 	}
@@ -1315,29 +1320,39 @@ class PublicAPI extends \WP_REST_Controller {
 
 		$table = $wpdb->prefix . 'str_messages';
 
-		// Get the most recent message per booking, with unread status.
+		// Get the latest message row per booking by joining against a MAX(id) subquery.
+		// This avoids correlated subqueries with LIMIT which can fail on some MySQL configs.
 		$rows = $wpdb->get_results(
 			"SELECT m.booking_id,
-			        m.message      AS last_message,
-			        m.created_at   AS last_message_at,
-			        m.sender       AS last_sender,
-			        SUM( CASE WHEN m2.sender = 'guest' AND m2.read_at IS NULL THEN 1 ELSE 0 END ) AS unread_count
+			        m.message    AS last_message,
+			        m.created_at AS last_message_at,
+			        m.sender     AS last_sender,
+			        (
+			            SELECT COUNT(*)
+			            FROM {$table} u
+			            WHERE u.booking_id = m.booking_id
+			              AND u.sender     = 'guest'
+			              AND u.read_at    IS NULL
+			        ) AS unread_count
 			 FROM {$table} m
-			 INNER JOIN {$table} m2 ON m2.booking_id = m.booking_id
-			 WHERE m.id = (
-			     SELECT id FROM {$table} m3
-			     WHERE m3.booking_id = m.booking_id
-			     ORDER BY created_at DESC LIMIT 1
-			 )
-			 GROUP BY m.booking_id, m.message, m.created_at, m.sender
+			 INNER JOIN (
+			     SELECT booking_id, MAX(id) AS max_id
+			     FROM {$table}
+			     GROUP BY booking_id
+			 ) latest ON latest.booking_id = m.booking_id AND latest.max_id = m.id
 			 ORDER BY m.created_at DESC",
 			ARRAY_A
-		) ?: array();
+		);
+
+		if ( empty( $rows ) ) {
+			return rest_ensure_response( array() );
+		}
 
 		$conversations = array();
 		foreach ( $rows as $row ) {
-			$bid          = (int) $row['booking_id'];
-			$property_id  = (int) get_post_meta( $bid, 'str_property_id', true );
+			$bid         = (int) $row['booking_id'];
+			$property_id = (int) get_post_meta( $bid, 'str_property_id', true );
+
 			$conversations[] = array(
 				'booking_id'      => $bid,
 				'guest_name'      => get_post_meta( $bid, 'str_guest_name', true ),

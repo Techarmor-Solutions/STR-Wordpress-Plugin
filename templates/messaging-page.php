@@ -169,16 +169,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ message: msg })
 		})
-		.then(function(r) { return r.json(); })
-		.then(function(data) {
-			btn.disabled = false;
-			btn.textContent = 'Send';
-			if (data && data.id) {
+		.then(function(r) {
+			if (r.ok) {
 				textarea.value = '';
+				btn.disabled = false;
+				btn.textContent = 'Send';
 				loadMessages();
 			} else {
-				errEl.textContent = (data && data.message) ? data.message : 'Could not send message. Please try again.';
-				errEl.style.display = 'block';
+				return r.json().then(function(data) {
+					btn.disabled = false;
+					btn.textContent = 'Send';
+					errEl.textContent = (data && data.message) ? data.message : 'Could not send message. Please try again.';
+					errEl.style.display = 'block';
+				});
 			}
 		})
 		.catch(function() {
