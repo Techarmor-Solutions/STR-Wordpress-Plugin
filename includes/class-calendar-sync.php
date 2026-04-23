@@ -94,9 +94,8 @@ class CalendarSync {
 
 		$calendar = new Vcalendar(
 			array(
-				'unique_id' => 'str-booking-' . $property_id . '-' . get_bloginfo( 'url' ),
+				'unique_id' => parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ),
 				'CALSCALE'  => 'GREGORIAN',
-				'METHOD'    => 'PUBLISH',
 			)
 		);
 
@@ -113,8 +112,7 @@ class CalendarSync {
 		$past_bookings = $this->booking_manager->get_bookings_for_property( $property_id, $past_start, $start );
 		$bookings      = array_merge( $past_bookings, $bookings );
 
-		$dtstamp_params = [ 'VALUE' => 'DATE-TIME' ];
-		$date_params    = [ 'VALUE' => 'DATE' ];
+		$date_params = [ 'VALUE' => 'DATE' ];
 
 		foreach ( $bookings as $booking ) {
 			if ( is_wp_error( $booking ) ) {
@@ -133,7 +131,7 @@ class CalendarSync {
 			$vevent->setStatus( 'CONFIRMED' );
 			$vevent->setUid( 'str-booking-' . $booking['id'] . '@' . parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ) );
 			$vevent->setDescription( 'Direct booking' );
-			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ), $dtstamp_params );
+			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ) );
 		}
 
 		// Also export blocked dates from external imports
@@ -165,7 +163,7 @@ class CalendarSync {
 			$vevent->setSummary( 'Not available' );
 			$vevent->setStatus( 'CONFIRMED' );
 			$vevent->setUid( 'str-blocked-' . md5( $range['start'] . $range['end'] . $property_id ) . '@' . parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ) );
-			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ), $dtstamp_params );
+			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ) );
 		}
 
 		return $calendar->createCalendar();
