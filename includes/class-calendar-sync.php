@@ -8,7 +8,6 @@
 namespace STRBooking;
 
 use Kigkonsult\Icalcreator\Vcalendar;
-use Kigkonsult\Icalcreator\Vevent;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -92,81 +91,109 @@ class CalendarSync {
 			return '';
 		}
 
-		$calendar = new Vcalendar(
-			array(
-				'unique_id' => parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ),
-				'CALSCALE'  => 'GREGORIAN',
-			)
+		$host   = (string) parse_url( get_bloginfo( 'url' ), PHP_URL_HOST );
+		$events = array();
+
+		// Confirmed bookings: past 3 months through next 12 months.
+		$past_start = date( 'Y-m-d', strtotime( '-3 months' ) );
+		$future_end = date( 'Y-m-d', strtotime( '+12 months' ) );
+		$bookings   = array_merge(
+			$this->booking_manager->get_bookings_for_property( $property_id, $past_start, date( 'Y-m-d' ) ),
+			$this->booking_manager->get_bookings_for_property( $property_id, date( 'Y-m-d' ), $future_end )
 		);
-
-		$calendar->setXprop( 'X-WR-CALNAME', get_the_title( $property_id ) );
-		$calendar->setXprop( 'X-WR-TIMEZONE', wp_timezone_string() );
-
-		// Get confirmed bookings for the next 12 months
-		$start    = date( 'Y-m-d' );
-		$end      = date( 'Y-m-d', strtotime( '+12 months' ) );
-		$bookings = $this->booking_manager->get_bookings_for_property( $property_id, $start, $end );
-
-		// Also include past bookings (last 3 months)
-		$past_start    = date( 'Y-m-d', strtotime( '-3 months' ) );
-		$past_bookings = $this->booking_manager->get_bookings_for_property( $property_id, $past_start, $start );
-		$bookings      = array_merge( $past_bookings, $bookings );
-
-		$date_params = [ 'VALUE' => 'DATE' ];
 
 		foreach ( $bookings as $booking ) {
 			if ( is_wp_error( $booking ) ) {
 				continue;
 			}
-
 			if ( ! in_array( $booking['status'], array( 'confirmed', 'checked_in', 'checked_out' ), true ) ) {
 				continue;
 			}
-
-			$vevent = $calendar->newVevent();
-			// VALUE=DATE (all-day) is required by Airbnb and VRBO iCal parsers.
-			$vevent->setDtstart( $booking['check_in'], $date_params );
-			$vevent->setDtend( $booking['check_out'], $date_params );
-			$vevent->setSummary( 'Not available' );
-			$vevent->setStatus( 'CONFIRMED' );
-			$vevent->setUid( 'str-booking-' . $booking['id'] . '@' . parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ) );
-			$vevent->setDescription( 'Direct booking' );
-			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ) );
+			// check_out is already the exclusive end date (day guest departs).
+			$events[] = array(
+				'uid'   => 'str-booking-' . $booking['id'] . '@' . $host,
+				'start' => $booking['check_in'],
+				'end'   => $booking['check_out'],
+			);
 		}
 
-		// Also export blocked dates from external imports
+		// Blocked dates from external calendar imports.
 		global $wpdb;
-		$avail_table = $wpdb->prefix . 'str_availability';
-
-		$blocked = $wpdb->get_results(
+		$avail_table    = $wpdb->prefix . 'str_availability';
+		$blocked        = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT date, block_reason FROM {$avail_table}
-				WHERE property_id = %d
-				AND status = 'blocked'
-				AND date >= %s",
+				"SELECT date FROM {$avail_table}
+				WHERE property_id = %d AND status = 'blocked' AND date >= %s",
 				$property_id,
 				$past_start
 			),
 			ARRAY_A
 		);
-
-		// Group consecutive blocked dates into ranges
 		$blocked_ranges = $this->group_consecutive_dates( array_column( $blocked, 'date' ) );
 
 		foreach ( $blocked_ranges as $range ) {
 			$end_dt = new \DateTime( $range['end'] );
-			$end_dt->modify( '+1 day' ); // DTEND is exclusive in iCal
-
-			$vevent = $calendar->newVevent();
-			$vevent->setDtstart( $range['start'], $date_params );
-			$vevent->setDtend( $end_dt->format( 'Y-m-d' ), $date_params );
-			$vevent->setSummary( 'Not available' );
-			$vevent->setStatus( 'CONFIRMED' );
-			$vevent->setUid( 'str-blocked-' . md5( $range['start'] . $range['end'] . $property_id ) . '@' . parse_url( get_bloginfo( 'url' ), PHP_URL_HOST ) );
-			$vevent->setDtstamp( new \DateTime( 'now', new \DateTimeZone( 'UTC' ) ) );
+			$end_dt->modify( '+1 day' ); // DTEND is exclusive in iCal.
+			$events[] = array(
+				'uid'   => 'str-blocked-' . md5( $range['start'] . $range['end'] . $property_id ) . '@' . $host,
+				'start' => $range['start'],
+				'end'   => $end_dt->format( 'Y-m-d' ),
+			);
 		}
 
-		return $calendar->createCalendar();
+		return $this->build_ical_string( $property_id, $events );
+	}
+
+	/**
+	 * Build a raw RFC 5545 iCal string from a list of blocked-date events.
+	 *
+	 * @param int   $property_id Property post ID (used for calendar name).
+	 * @param array $events      Array of ['uid', 'start' (Y-m-d), 'end' (Y-m-d)] entries.
+	 * @return string
+	 */
+	private function build_ical_string( int $property_id, array $events ): string {
+		$CRLF  = "\r\n";
+		$now   = gmdate( 'Ymd\THis\Z' );
+		$lines = array(
+			'BEGIN:VCALENDAR',
+			'PRODID:-//STR Direct Booking//Calendar 1.0//EN',
+			'VERSION:2.0',
+			'CALSCALE:GREGORIAN',
+			$this->ical_fold( 'X-WR-CALNAME:' . get_the_title( $property_id ) ),
+		);
+
+		foreach ( $events as $event ) {
+			$lines[] = 'BEGIN:VEVENT';
+			$lines[] = 'UID:' . $event['uid'];
+			$lines[] = 'DTSTAMP:' . $now;
+			$lines[] = 'DTSTART;VALUE=DATE:' . gmdate( 'Ymd', strtotime( $event['start'] ) );
+			$lines[] = 'DTEND;VALUE=DATE:' . gmdate( 'Ymd', strtotime( $event['end'] ) );
+			$lines[] = 'SUMMARY:Not available';
+			$lines[] = 'TRANSP:OPAQUE';
+			$lines[] = 'END:VEVENT';
+		}
+
+		$lines[] = 'END:VCALENDAR';
+		return implode( $CRLF, $lines ) . $CRLF;
+	}
+
+	/**
+	 * Fold a single iCal property line to the 75-byte limit per RFC 5545 §3.1.
+	 *
+	 * @param string $line The full property line (no CRLF).
+	 * @return string Folded line (no trailing CRLF — caller adds via implode).
+	 */
+	private function ical_fold( string $line ): string {
+		if ( strlen( $line ) <= 75 ) {
+			return $line;
+		}
+		$folded = substr( $line, 0, 75 );
+		$rest   = substr( $line, 75 );
+		while ( strlen( $rest ) > 0 ) {
+			$folded .= "\r\n " . substr( $rest, 0, 74 );
+			$rest    = substr( $rest, 74 );
+		}
+		return $folded;
 	}
 
 	/**
