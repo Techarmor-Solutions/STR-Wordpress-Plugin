@@ -40,10 +40,11 @@ class PricingEngine {
 		}
 
 		// Property meta
-		$base_rate        = (float) get_post_meta( $property_id, 'str_nightly_rate', true );
-		$cleaning_fee     = (float) get_post_meta( $property_id, 'str_cleaning_fee', true );
-		$security_deposit = (float) get_post_meta( $property_id, 'str_security_deposit', true );
-		$los_discounts    = get_post_meta( $property_id, 'str_los_discounts', true );
+		$base_rate           = (float) get_post_meta( $property_id, 'str_nightly_rate', true );
+		$cleaning_fee        = (float) get_post_meta( $property_id, 'str_cleaning_fee', true );
+		$security_deposit    = (float) get_post_meta( $property_id, 'str_security_deposit', true );
+		$los_discounts       = get_post_meta( $property_id, 'str_los_discounts', true );
+		$management_fee_pct  = (float) get_post_meta( $property_id, 'str_management_fee_pct', true );
 
 		// Tax rate: property override or global setting
 		$tax_rate = (float) get_post_meta( $property_id, 'str_tax_rate', true );
@@ -63,20 +64,25 @@ class PricingEngine {
 		// Taxes applied on nightly subtotal after discount (not on fees/deposit)
 		$taxes = round( $discounted_subtotal * $tax_rate, 2 );
 
-		$total = round( $discounted_subtotal + $cleaning_fee + $taxes + $security_deposit, 2 );
+		// Management fee applied on nightly subtotal after discount (not on taxes/deposit)
+		$management_fee = $management_fee_pct > 0 ? round( $discounted_subtotal * $management_fee_pct, 2 ) : 0.0;
+
+		$total = round( $discounted_subtotal + $cleaning_fee + $taxes + $security_deposit + $management_fee, 2 );
 
 		return array(
-			'nights'            => $nights,
-			'nightly_rate'      => $avg_nightly_rate,
-			'nightly_subtotal'  => round( $nightly_subtotal, 2 ),
-			'los_discount'      => round( $nightly_subtotal * $los_discount, 2 ),
-			'los_discount_rate' => $los_discount,
-			'cleaning_fee'      => $cleaning_fee,
-			'security_deposit'  => $security_deposit,
-			'taxes'             => $taxes,
-			'tax_rate'          => $tax_rate,
-			'total'             => $total,
-			'daily_breakdown'   => $daily_breakdown,
+			'nights'               => $nights,
+			'nightly_rate'         => $avg_nightly_rate,
+			'nightly_subtotal'     => round( $nightly_subtotal, 2 ),
+			'los_discount'         => round( $nightly_subtotal * $los_discount, 2 ),
+			'los_discount_rate'    => $los_discount,
+			'cleaning_fee'         => $cleaning_fee,
+			'security_deposit'     => $security_deposit,
+			'taxes'                => $taxes,
+			'tax_rate'             => $tax_rate,
+			'management_fee'       => $management_fee,
+			'management_fee_pct'   => $management_fee_pct,
+			'total'                => $total,
+			'daily_breakdown'      => $daily_breakdown,
 		);
 	}
 
