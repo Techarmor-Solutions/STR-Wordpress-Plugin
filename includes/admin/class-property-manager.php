@@ -138,6 +138,7 @@ class PropertyManager {
 			'str_los_discounts'             => array( 'type' => 'string', 'description' => 'Length-of-stay discounts JSON' ),
 			'str_tax_rate'                  => array( 'type' => 'number', 'description' => 'Property-specific tax rate override' ),
 			'str_management_fee_pct'        => array( 'type' => 'number', 'description' => 'Management fee as a decimal percentage (e.g. 0.10 = 10%)' ),
+			'str_management_stripe_account' => array( 'type' => 'string', 'description' => 'Stripe Connect account ID for management fee transfers' ),
 			'str_host_phone'                => array( 'type' => 'string', 'description' => 'Host phone number' ),
 			'str_instant_book'              => array( 'type' => 'boolean', 'description' => 'Allow instant booking' ),
 			// Pricing tiers
@@ -185,7 +186,8 @@ class PropertyManager {
 			'str_taxes'                    => array( 'type' => 'number', 'description' => 'Tax amount' ),
 			'str_total'                    => array( 'type' => 'number', 'description' => 'Total amount charged' ),
 			'str_los_discount'             => array( 'type' => 'number', 'description' => 'Length-of-stay discount applied' ),
-			'str_management_fee'           => array( 'type' => 'number', 'description' => 'Management fee amount charged' ),
+			'str_management_fee'           => array( 'type' => 'number', 'description' => 'Management fee dollar amount allocated' ),
+			'str_management_fee_pct'       => array( 'type' => 'number', 'description' => 'Management fee percentage at time of booking' ),
 			'str_stripe_payment_intent'    => array( 'type' => 'string', 'description' => 'Stripe PaymentIntent ID' ),
 			'str_stripe_charge_id'         => array( 'type' => 'string', 'description' => 'Stripe Charge ID' ),
 			'str_stripe_transfer_group'    => array( 'type' => 'string', 'description' => 'Stripe Transfer Group ID' ),
@@ -279,7 +281,6 @@ class PropertyManager {
 			'str_wifi_password'    => array( 'label' => 'WiFi Password', 'type' => 'text' ),
 			'str_host_phone'       => array( 'label' => 'Host Phone', 'type' => 'text' ),
 			'str_tax_rate'             => array( 'label' => 'Tax Rate (0.00–1.00)', 'type' => 'number', 'step' => '0.001' ),
-			'str_management_fee_pct'   => array( 'label' => 'Management Fee % (0.00–1.00)', 'type' => 'number', 'step' => '0.001' ),
 		);
 
 		echo '<table class="form-table"><tbody>';
@@ -320,6 +321,26 @@ class PropertyManager {
 		echo '<tr><th><label for="str_los_discounts">LOS Discounts (JSON)</label></th>';
 		echo '<td><textarea id="str_los_discounts" name="str_los_discounts" rows="4" class="large-text code">' . esc_textarea( $los ) . '</textarea>';
 		echo '<p class="description">Example: [{"min_nights":7,"discount":0.10},{"min_nights":28,"discount":0.20}]</p></td></tr>';
+
+		// Management Fee
+		$mgmt_fee_pct     = get_post_meta( $post->ID, 'str_management_fee_pct', true );
+		$mgmt_stripe_acct = get_post_meta( $post->ID, 'str_management_stripe_account', true );
+		echo '<tr>';
+		echo '<th><label for="str_management_fee_pct">' . esc_html__( 'Management Fee', 'str-direct-booking' ) . '</label></th>';
+		echo '<td>';
+		printf(
+			'<input type="number" id="str_management_fee_pct" name="str_management_fee_pct" value="%s" step="0.001" min="0" max="1" class="small-text" /> <span class="description">%s</span>',
+			esc_attr( $mgmt_fee_pct ),
+			esc_html__( 'Decimal (e.g. 0.10 = 10%). Leave blank or 0 for no fee.', 'str-direct-booking' )
+		);
+		echo '<br style="margin-bottom:8px" />';
+		printf(
+			'<input type="text" id="str_management_stripe_account" name="str_management_stripe_account" value="%s" class="regular-text" placeholder="acct_xxxxxxxxxxxx" />',
+			esc_attr( $mgmt_stripe_acct )
+		);
+		echo '<p class="description">' . esc_html__( 'Stripe Connect account ID to receive the management fee. This percentage is taken from the booking total (excluding security deposit) and transferred to this account — it does not increase what the guest pays.', 'str-direct-booking' ) . '</p>';
+		echo '</td>';
+		echo '</tr>';
 
 		// Email From Name / Email (per-property override)
 		$from_name  = get_post_meta( $post->ID, 'str_from_name', true );
@@ -549,7 +570,7 @@ class PropertyManager {
 		}
 
 		$number_fields  = array( 'str_nightly_rate', 'str_weekday_price', 'str_weekend_price', 'str_cleaning_fee', 'str_security_deposit', 'str_tax_rate', 'str_management_fee_pct' );
-		$text_fields    = array( 'str_check_in_time', 'str_check_out_time', 'str_address', 'str_door_code', 'str_wifi_password', 'str_host_phone', 'str_los_discounts', 'str_from_name', 'str_from_email' );
+		$text_fields    = array( 'str_check_in_time', 'str_check_out_time', 'str_address', 'str_door_code', 'str_wifi_password', 'str_host_phone', 'str_los_discounts', 'str_from_name', 'str_from_email', 'str_management_stripe_account' );
 		$integer_fields = array( 'str_min_nights', 'str_max_nights', 'str_max_guests', 'str_plan_two_deposit_pct', 'str_plan_two_days_before', 'str_plan_four_deposit_min_pct', 'str_turnover_buffer' );
 		$boolean_fields = array( 'str_plan_full_enabled', 'str_plan_two_enabled', 'str_plan_four_enabled', 'str_door_code_use_phone' );
 

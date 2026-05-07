@@ -359,12 +359,37 @@ class PaymentHandler {
 			return;
 		}
 
-		$cohosts = $this->cohost_manager->get_property_cohosts( $booking['property_id'] );
-		if ( empty( $cohosts ) ) {
-			return;
+		$currency = strtolower( get_option( 'str_booking_currency', 'usd' ) );
+		$errors   = array();
+
+		// Management fee transfer
+		$mgmt_stripe_acct = get_post_meta( $booking['property_id'], 'str_management_stripe_account', true );
+		$mgmt_fee         = (float) get_post_meta( $booking_id, 'str_management_fee', true );
+
+		if ( ! empty( $mgmt_stripe_acct ) && $mgmt_fee > 0 ) {
+			$cents = (int) round( $mgmt_fee * 100 );
+
+			try {
+				\Stripe\Transfer::create(
+					array(
+						'amount'         => $cents,
+						'currency'       => $currency,
+						'destination'    => $mgmt_stripe_acct,
+						'transfer_group' => $transfer_group,
+						'metadata'       => array(
+							'booking_id' => $booking_id,
+							'type'       => 'management_fee',
+						),
+					)
+				);
+			} catch ( \Stripe\Exception\ApiErrorException $e ) {
+				$errors[] = 'Management fee: ' . $e->getMessage();
+				error_log( 'STR Booking: Management fee transfer failed for booking ' . $booking_id . ': ' . $e->getMessage() );
+			}
 		}
 
-		$errors = array();
+		// Co-host transfers
+		$cohosts = $this->cohost_manager->get_property_cohosts( $booking['property_id'] );
 
 		foreach ( $cohosts as $cohost ) {
 			if ( empty( $cohost['stripe_account_id'] ) ) {
@@ -379,15 +404,13 @@ class PaymentHandler {
 			}
 
 			try {
-				$currency = get_option( 'str_booking_currency', 'usd' );
-
 				\Stripe\Transfer::create(
 					array(
-						'amount'          => $cents,
-						'currency'        => strtolower( $currency ),
-						'destination'     => $cohost['stripe_account_id'],
-						'transfer_group'  => $transfer_group,
-						'metadata'        => array(
+						'amount'         => $cents,
+						'currency'       => $currency,
+						'destination'    => $cohost['stripe_account_id'],
+						'transfer_group' => $transfer_group,
+						'metadata'       => array(
 							'booking_id' => $booking_id,
 							'cohost_id'  => $cohost['id'],
 						),
