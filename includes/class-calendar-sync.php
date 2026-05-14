@@ -370,6 +370,8 @@ class CalendarSync {
 
 		$vevents = $calendar->getComponents( Vcalendar::VEVENT );
 
+		// Collect all dates from the current feed before touching the database.
+		$dates_in_feed = array();
 		foreach ( $vevents as $vevent ) {
 			$dtstart = $vevent->getDtstart();
 			$dtend   = $vevent->getDtend();
@@ -378,7 +380,6 @@ class CalendarSync {
 				continue;
 			}
 
-			// Normalize to Y-m-d (date-only), stripping timezone complications
 			$start_date = $dtstart->format( 'Y-m-d' );
 			$end_date   = $dtend->format( 'Y-m-d' ); // iCal DTEND is exclusive
 
@@ -386,21 +387,59 @@ class CalendarSync {
 			$end     = new \DateTime( $end_date );
 
 			while ( $current < $end ) {
-				$date = $current->format( 'Y-m-d' );
-
-				$wpdb->replace(
-					$avail_table,
-					array(
-						'property_id'  => $property_id,
-						'date'         => $date,
-						'status'       => 'blocked',
-						'block_reason' => $platform,
-					),
-					array( '%d', '%s', '%s', '%s' )
-				);
-
+				$dates_in_feed[] = $current->format( 'Y-m-d' );
 				$current->modify( '+1 day' );
 			}
+		}
+
+		$dates_in_feed = array_unique( $dates_in_feed );
+
+		// Remove stale blocked entries for this platform — any date no longer present
+		// in the current feed (e.g. a cancellation on Airbnb) must be cleared now.
+		if ( ! empty( $dates_in_feed ) ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $dates_in_feed ), '%s' ) );
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$avail_table}
+					 WHERE property_id = %d
+					   AND status = 'blocked'
+					   AND block_reason = %s
+					   AND date NOT IN ({$placeholders})",
+					$property_id,
+					$platform,
+					...$dates_in_feed
+				)
+			);
+		} else {
+			// Feed is empty — platform has no blocks at all; clear them all.
+			$wpdb->delete(
+				$avail_table,
+				array(
+					'property_id'  => $property_id,
+					'status'       => 'blocked',
+					'block_reason' => $platform,
+				),
+				array( '%d', '%s', '%s' )
+			);
+		}
+
+		// Insert / refresh blocked dates. Never overwrite a confirmed booking row —
+		// platforms echo our own calendar back, so a booked date can appear in their
+		// feed; replacing it would destroy the booked row and break cancellation cleanup.
+		foreach ( $dates_in_feed as $date ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					"INSERT INTO {$avail_table} (property_id, date, status, block_reason)
+					 VALUES (%d, %s, 'blocked', %s)
+					 ON DUPLICATE KEY UPDATE
+					   status       = IF(status = 'booked', 'booked', 'blocked'),
+					   block_reason = IF(status = 'booked', block_reason, %s)",
+					$property_id,
+					$date,
+					$platform,
+					$platform
+				)
+			);
 		}
 	}
 
