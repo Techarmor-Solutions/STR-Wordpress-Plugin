@@ -119,7 +119,8 @@ class BookingWidget {
 			'str-booking-widget',
 			'.str-bk-cal-day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .str-bk-price { display: block; font-size: 10px; line-height: 1; margin-top: 2px; opacity: 0.75; pointer-events: none; white-space: nowrap; }
-.str-bk-cal-day--blocked { pointer-events: none !important; cursor: not-allowed !important; }'
+.str-bk-cal-day--blocked { pointer-events: none !important; cursor: not-allowed !important; }
+.str-bk-cal-day--blocked:not(.str-bk-cal-day--range-start):not(.str-bk-cal-day--range-end) { background: #fee2e2 !important; color: #991b1b !important; text-decoration: line-through !important; }'
 		);
 
 		wp_add_inline_script(

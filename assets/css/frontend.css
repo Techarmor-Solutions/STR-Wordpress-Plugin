@@ -544,6 +544,14 @@
 	cursor: not-allowed;
 }
 
+/* Override the React inline styles on blocked days so they're clearly red.
+   Exclude range-start/end so a selected checkout date that overlaps a blocked
+   date keeps its dark navy styling instead of turning red. */
+.str-booking-widget .str-bk-cal-day--blocked:not(.str-bk-cal-day--range-start):not(.str-bk-cal-day--range-end) {
+	background: #fee2e2 !important;
+	color: #991b1b !important;
+}
+
 .str-booking-widget .str-bk-cal-day--invalid {
 	color: #d1d5db;
 	cursor: not-allowed;
