@@ -78,6 +78,23 @@ class CalendarWidget {
 				'nonce'  => wp_create_nonce( 'wp_rest' ),
 			)
 		);
+
+		// Append a timestamp to every /calendar/ request so page-caching plugins
+		// and browser caches never serve stale availability data.
+		wp_add_inline_script(
+			'str-calendar-widget',
+			'(function(){
+	if(!window.wp||!window.wp.apiFetch){return;}
+	window.wp.apiFetch.use(function(options,next){
+		if(options.url&&options.url.indexOf("/calendar/")!==-1){
+			var sep=options.url.indexOf("?")!==-1?"&":"?";
+			options.url=options.url+sep+"_t="+Date.now();
+		}
+		return next(options);
+	});
+})();',
+			'before'
+		);
 	}
 
 	/**

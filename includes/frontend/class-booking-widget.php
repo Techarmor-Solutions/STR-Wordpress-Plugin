@@ -123,6 +123,23 @@ class BookingWidget {
 .str-bk-cal-day--blocked:not(.str-bk-cal-day--range-start):not(.str-bk-cal-day--range-end) { background: #fee2e2 !important; color: #991b1b !important; text-decoration: line-through !important; }'
 		);
 
+		// Register an apiFetch middleware that appends a timestamp to all
+		// /calendar/ requests so the browser never serves a cached response.
+		wp_add_inline_script(
+			'str-booking-widget',
+			'(function(){
+	if(!window.wp||!window.wp.apiFetch){return;}
+	window.wp.apiFetch.use(function(options,next){
+		if(options.url&&options.url.indexOf("/calendar/")!==-1){
+			var sep=options.url.indexOf("?")!==-1?"&":"?";
+			options.url=options.url+sep+"_t="+Date.now();
+		}
+		return next(options);
+	});
+})();',
+			'before'
+		);
+
 		wp_add_inline_script(
 			'str-booking-widget',
 			$this->get_price_injection_script(),
@@ -159,8 +176,8 @@ class BookingWidget {
 	function fetchPrices(propertyId, year, month, cb) {
 		var cacheKey = propertyId + ':' + year + '-' + String(month).padStart(2, '0');
 		if (priceCache[cacheKey]) { cb(priceCache[cacheKey]); return; }
-		fetch(apiUrl + '/calendar/' + propertyId + '?year=' + year + '&month=' + month, {
-			headers: { 'X-WP-Nonce': nonce }
+		fetch(apiUrl + '/calendar/' + propertyId + '?year=' + year + '&month=' + month + '&_=' + Date.now(), {
+			headers: { 'X-WP-Nonce': nonce, 'Cache-Control': 'no-cache' }
 		})
 		.then(function (r) { return r.json(); })
 		.then(function (data) {

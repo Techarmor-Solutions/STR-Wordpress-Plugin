@@ -870,7 +870,10 @@ class PublicAPI extends \WP_REST_Controller {
 			$date_map
 		);
 
-		return rest_ensure_response( array_values( $result ) );
+		$response = rest_ensure_response( array_values( $result ) );
+		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+		$response->header( 'Pragma', 'no-cache' );
+		return $response;
 	}
 
 	/**
@@ -1215,12 +1218,58 @@ class PublicAPI extends \WP_REST_Controller {
 			);
 		}
 
+		// Flush page/object caches so the frontend immediately reflects this change.
+		$this->flush_calendar_cache( $property_id );
+
 		return rest_ensure_response( array(
 			'success'        => true,
 			'date'           => $date,
 			'status'         => $new_status,
 			'price_override' => $price_override,
 		) );
+	}
+
+	/**
+	 * Flush page-cache and object-cache entries that could serve stale calendar data.
+	 *
+	 * Fires the hooks that popular caching plugins (WP Rocket, W3TC, LiteSpeed,
+	 * WP Super Cache) listen to so they purge the pages containing the booking
+	 * widget or the availability calendar.
+	 *
+	 * @param int $property_id Property post ID.
+	 */
+	private function flush_calendar_cache( int $property_id ): void {
+		// WordPress object cache — clears transients and cached queries.
+		wp_cache_flush();
+
+		// WP Rocket.
+		if ( function_exists( 'rocket_clean_domain' ) ) {
+			rocket_clean_domain();
+		}
+
+		// W3 Total Cache.
+		if ( function_exists( 'w3tc_flush_all' ) ) {
+			w3tc_flush_all();
+		}
+
+		// WP Super Cache.
+		if ( function_exists( 'wp_cache_clear_cache' ) ) {
+			wp_cache_clear_cache();
+		}
+
+		// LiteSpeed Cache.
+		do_action( 'litespeed_purge_all' );
+
+		// Autoptimize / generic hook many plugins implement.
+		do_action( 'autoptimize_action_cachepurged' );
+
+		// Purge the specific property page if we can determine it.
+		$linked_page = get_post_meta( $property_id, 'str_booking_page_id', true );
+		if ( $linked_page ) {
+			if ( function_exists( 'rocket_clean_post' ) ) {
+				rocket_clean_post( (int) $linked_page );
+			}
+		}
 	}
 
 	/**
