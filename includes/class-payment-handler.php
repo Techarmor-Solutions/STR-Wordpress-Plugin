@@ -95,6 +95,7 @@ class PaymentHandler {
 				'status'        => $intent->status,
 			);
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			\Sentry\captureException( $e );
 			return new \WP_Error( 'stripe_error', $e->getMessage() );
 		}
 	}
@@ -120,6 +121,7 @@ class PaymentHandler {
 
 			return $customer->id;
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			\Sentry\captureException( $e );
 			return new \WP_Error( 'stripe_error', $e->getMessage() );
 		}
 	}
@@ -161,8 +163,10 @@ class PaymentHandler {
 				'amount' => $intent->amount,
 			);
 		} catch ( \Stripe\Exception\CardException $e ) {
+			\Sentry\captureException( $e );
 			return new \WP_Error( 'card_error', $e->getMessage() );
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			\Sentry\captureException( $e );
 			return new \WP_Error( 'stripe_error', $e->getMessage() );
 		}
 	}
@@ -388,6 +392,7 @@ class PaymentHandler {
 					)
 				);
 			} catch ( \Stripe\Exception\ApiErrorException $e ) {
+				\Sentry\captureException( $e );
 				$errors[] = 'Management fee: ' . $e->getMessage();
 				error_log( 'STR Booking: Management fee transfer failed for booking ' . $booking_id . ': ' . $e->getMessage() );
 			}
@@ -422,6 +427,7 @@ class PaymentHandler {
 					)
 				);
 			} catch ( \Stripe\Exception\ApiErrorException $e ) {
+				\Sentry\captureException( $e );
 				$errors[] = sprintf( 'Cohost %d: %s', $cohost['id'], $e->getMessage() );
 				error_log( 'STR Booking: Transfer failed for cohost ' . $cohost['id'] . ': ' . $e->getMessage() );
 			}

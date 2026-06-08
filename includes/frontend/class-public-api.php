@@ -398,6 +398,7 @@ class PublicAPI extends \WP_REST_Controller {
 		try {
 			return $this->create_booking_inner( $request );
 		} catch ( \Throwable $e ) {
+			\Sentry\captureException( $e );
 			error_log( 'STR Booking [create_booking] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString() );
 			return new \WP_Error( 'booking_exception', $e->getMessage(), array( 'status' => 500 ) );
 		}
@@ -651,6 +652,7 @@ class PublicAPI extends \WP_REST_Controller {
 		try {
 			$intent = \Stripe\PaymentIntent::retrieve( $pi_id );
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			\Sentry\captureException( $e );
 			return new \WP_Error( 'stripe_error', $e->getMessage(), array( 'status' => 400 ) );
 		}
 
