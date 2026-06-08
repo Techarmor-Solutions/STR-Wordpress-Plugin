@@ -44,6 +44,14 @@ if ( function_exists( '\Sentry\init' ) ) {
 	) );
 }
 
+// TEMPORARY — remove after confirming Sentry receives events.
+add_action( 'init', function () {
+	if ( isset( $_GET['str_sentry_test'] ) && current_user_can( 'manage_options' ) ) {
+		\Sentry\captureException( new \RuntimeException( 'STR Booking: Sentry test error — safe to ignore.' ) );
+		wp_die( 'Sentry test event sent. Check your Sentry dashboard.' );
+	}
+} );
+
 use STRBooking\Database\DatabaseManager;
 use STRBooking\STRBooking;
 
