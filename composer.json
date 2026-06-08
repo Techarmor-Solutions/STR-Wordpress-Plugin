@@ -5,6 +5,7 @@
     "require": {
         "php": ">=8.0",
         "kigkonsult/icalcreator": "^2.41",
+        "sentry/sdk": "^4.0",
         "stripe/stripe-php": "^15.0"
     },
     "autoload": {

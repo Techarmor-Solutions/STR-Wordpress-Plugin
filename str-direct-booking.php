@@ -3,7 +3,7 @@
  * Plugin Name:       STR Direct Booking
  * Plugin URI:        https://github.com/str-direct-booking/plugin
  * Description:       Enable STR hosts to accept direct bookings, sync calendars with Airbnb/VRBO, split payments between co-hosts via Stripe Connect, and retain guest data.
- * Version:           1.3.12
+ * Version:           1.3.13
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            STR Direct Booking
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'STR_BOOKING_VERSION', '1.3.12' );
+define( 'STR_BOOKING_VERSION', '1.3.13' );
 define( 'STR_BOOKING_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'STR_BOOKING_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'STR_BOOKING_DB_VERSION', '1.3.0' );
@@ -32,6 +32,16 @@ define( 'STR_LICENSE_SERVER_SECRET', '480f1c29c40794f985774e02cf63da0d585461c844
 // Load Composer autoloader
 if ( file_exists( STR_BOOKING_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
 	require_once STR_BOOKING_PLUGIN_DIR . 'vendor/autoload.php';
+}
+
+if ( function_exists( '\Sentry\init' ) ) {
+	ini_set( 'zend.exception_ignore_args', '0' );
+	\Sentry\init( array(
+		'dsn'                => 'https://c5dec13cd2f2b7d214eb1abac8ab5b0d@o4511530252042240.ingest.us.sentry.io/4511530265608192',
+		'environment'        => defined( 'WP_DEBUG' ) && WP_DEBUG ? 'development' : 'production',
+		'release'            => 'str-direct-booking@' . STR_BOOKING_VERSION,
+		'traces_sample_rate' => 0.1,
+	) );
 }
 
 use STRBooking\Database\DatabaseManager;

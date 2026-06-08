@@ -97,6 +97,20 @@ class BookingWidget {
 			);
 		}
 
+		// Sentry Browser SDK — hard-coded DSN, invisible to clients.
+		wp_enqueue_script(
+			'sentry-js',
+			'https://browser.sentry-cdn.com/8/bundle.min.js',
+			array(),
+			null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
+			false
+		);
+		wp_add_inline_script(
+			'sentry-js',
+			'if(window.Sentry){Sentry.init({dsn:"https://c5dec13cd2f2b7d214eb1abac8ab5b0d@o4511530252042240.ingest.us.sentry.io/4511530265608192",release:"str-direct-booking@' . STR_BOOKING_VERSION . '",environment:"' . ( ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ? 'development' : 'production' ) . '",tracesSampleRate:0.1});}',
+			'after'
+		);
+
 		// Pass configuration to React
 		wp_localize_script(
 			'str-booking-widget',

@@ -378,6 +378,7 @@ class Settings {
 				'description' => __( 'Required only for private repositories. Leave blank for public repos. Generate at GitHub → Settings → Developer Settings → Personal Access Tokens.', 'str-direct-booking' ),
 			)
 		);
+
 	}
 
 	/**

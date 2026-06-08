@@ -72,12 +72,17 @@ class PaymentHandler {
 				'property_id' => $property_id,
 				'source'      => 'str_direct_booking',
 			),
-			'automatic_payment_methods' => array( 'enabled' => true ),
 		);
 
 		if ( $customer_id ) {
-			$args['customer']           = $customer_id;
-			$args['setup_future_usage'] = 'off_session';
+			// Payment plan: restrict to card-only so future off-session installments can be charged.
+			// automatic_payment_methods with off_session setup_future_usage can present redirect-based
+			// methods (iDEAL, bank debits) that don't support off-session reuse, leaving the intent incomplete.
+			$args['customer']             = $customer_id;
+			$args['setup_future_usage']   = 'off_session';
+			$args['payment_method_types'] = array( 'card' );
+		} else {
+			$args['automatic_payment_methods'] = array( 'enabled' => true );
 		}
 
 		try {
