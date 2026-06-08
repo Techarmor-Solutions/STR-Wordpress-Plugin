@@ -3,7 +3,7 @@
  * Plugin Name:       STR Direct Booking
  * Plugin URI:        https://github.com/str-direct-booking/plugin
  * Description:       Enable STR hosts to accept direct bookings, sync calendars with Airbnb/VRBO, split payments between co-hosts via Stripe Connect, and retain guest data.
- * Version:           1.3.15
+ * Version:           1.3.16
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            STR Direct Booking
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'STR_BOOKING_VERSION', '1.3.15' );
+define( 'STR_BOOKING_VERSION', '1.3.16' );
 define( 'STR_BOOKING_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'STR_BOOKING_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'STR_BOOKING_DB_VERSION', '1.3.0' );
@@ -43,14 +43,6 @@ if ( function_exists( '\Sentry\init' ) ) {
 		'traces_sample_rate' => 0.1,
 	) );
 }
-
-// TEMPORARY — remove after confirming Sentry receives events.
-add_action( 'init', function () {
-	if ( isset( $_GET['str_sentry_test'] ) && current_user_can( 'manage_options' ) ) {
-		\Sentry\captureException( new \RuntimeException( 'STR Booking: Sentry test error — safe to ignore.' ) );
-		wp_die( 'Sentry test event sent. Check your Sentry dashboard.' );
-	}
-} );
 
 use STRBooking\Database\DatabaseManager;
 use STRBooking\STRBooking;
