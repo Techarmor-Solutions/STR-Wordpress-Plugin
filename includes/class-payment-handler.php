@@ -553,6 +553,7 @@ class PaymentHandler {
 				)
 			);
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
+			\Sentry\captureException( $e );
 			return new \WP_Error( 'oauth_error', $e->getMessage(), array( 'status' => 500 ) );
 		}
 	}

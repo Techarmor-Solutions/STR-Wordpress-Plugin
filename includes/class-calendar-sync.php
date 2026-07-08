@@ -340,6 +340,7 @@ class CalendarSync {
 				array( '%d' )
 			);
 		} catch ( \Exception $e ) {
+			\Sentry\captureException( $e );
 			$wpdb->update(
 				$table,
 				array(

@@ -351,20 +351,26 @@ class PublicAPI extends \WP_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function check_availability( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$property_id = (int) $request->get_param( 'property_id' );
-		$check_in    = sanitize_text_field( $request->get_param( 'check_in' ) );
-		$check_out   = sanitize_text_field( $request->get_param( 'check_out' ) );
+		try {
+			$property_id = (int) $request->get_param( 'property_id' );
+			$check_in    = sanitize_text_field( $request->get_param( 'check_in' ) );
+			$check_out   = sanitize_text_field( $request->get_param( 'check_out' ) );
 
-		$available = $this->booking_manager->check_availability( $property_id, $check_in, $check_out );
+			$available = $this->booking_manager->check_availability( $property_id, $check_in, $check_out );
 
-		return rest_ensure_response(
-			array(
-				'available'   => $available,
-				'property_id' => $property_id,
-				'check_in'    => $check_in,
-				'check_out'   => $check_out,
-			)
-		);
+			return rest_ensure_response(
+				array(
+					'available'   => $available,
+					'property_id' => $property_id,
+					'check_in'    => $check_in,
+					'check_out'   => $check_out,
+				)
+			);
+		} catch ( \Throwable $e ) {
+			\Sentry\captureException( $e );
+			error_log( 'STR Booking [check_availability] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString() );
+			return new \WP_Error( 'availability_exception', $e->getMessage(), array( 'status' => 500 ) );
+		}
 	}
 
 	/**
@@ -374,18 +380,24 @@ class PublicAPI extends \WP_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function get_pricing( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$property_id = (int) $request->get_param( 'property_id' );
-		$check_in    = sanitize_text_field( $request->get_param( 'check_in' ) );
-		$check_out   = sanitize_text_field( $request->get_param( 'check_out' ) );
-		$guests      = (int) $request->get_param( 'guests' );
+		try {
+			$property_id = (int) $request->get_param( 'property_id' );
+			$check_in    = sanitize_text_field( $request->get_param( 'check_in' ) );
+			$check_out   = sanitize_text_field( $request->get_param( 'check_out' ) );
+			$guests      = (int) $request->get_param( 'guests' );
 
-		$pricing = $this->pricing_engine->calculate( $property_id, $check_in, $check_out, $guests );
+			$pricing = $this->pricing_engine->calculate( $property_id, $check_in, $check_out, $guests );
 
-		if ( is_wp_error( $pricing ) ) {
-			return new \WP_Error( $pricing->get_error_code(), $pricing->get_error_message(), array( 'status' => 400 ) );
+			if ( is_wp_error( $pricing ) ) {
+				return new \WP_Error( $pricing->get_error_code(), $pricing->get_error_message(), array( 'status' => 400 ) );
+			}
+
+			return rest_ensure_response( $pricing );
+		} catch ( \Throwable $e ) {
+			\Sentry\captureException( $e );
+			error_log( 'STR Booking [get_pricing] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString() );
+			return new \WP_Error( 'pricing_exception', $e->getMessage(), array( 'status' => 500 ) );
 		}
-
-		return rest_ensure_response( $pricing );
 	}
 
 	/**
@@ -725,6 +737,7 @@ class PublicAPI extends \WP_REST_Controller {
 		try {
 			do_action( 'str_booking_confirmed', $booking_id );
 		} catch ( \Throwable $e ) {
+			\Sentry\captureException( $e );
 			error_log( 'STR Booking [str_booking_confirmed hook] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
 		}
 
