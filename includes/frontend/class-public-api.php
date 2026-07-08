@@ -470,6 +470,7 @@ class PublicAPI extends \WP_REST_Controller {
 			}
 
 			update_post_meta( $booking_id, 'str_payment_plan', 'pay_in_full' );
+			$guest_access_token = $this->generate_guest_access_token( $booking_id );
 
 			$amount_cents = (int) round( $total * 100 );
 			$result       = ( new SquareHandler() )->create_payment( $amount_cents, $currency, $source_id, $booking_id );
@@ -485,9 +486,10 @@ class PublicAPI extends \WP_REST_Controller {
 
 			return new \WP_REST_Response(
 				array(
-					'booking_id' => $booking_id,
-					'success'    => true,
-					'total'      => $total,
+					'booking_id'          => $booking_id,
+					'success'             => true,
+					'total'               => $total,
+					'guest_access_token'  => $guest_access_token,
 				),
 				201
 			);
@@ -500,6 +502,20 @@ class PublicAPI extends \WP_REST_Controller {
 		$valid_plans = array( 'pay_in_full', 'two_payment', 'four_payment' );
 		if ( ! in_array( $payment_plan, $valid_plans, true ) ) {
 			$payment_plan = 'pay_in_full';
+		}
+
+		// Enforce host-configured eligibility (enable flags + days-before-checkin
+		// minimums) — the client's requested plan must actually be offered for
+		// this property/check-in date, not just a recognised plan name.
+		if ( 'pay_in_full' !== $payment_plan ) {
+			$eligible_plans = ( new PaymentPlanManager() )->get_eligible_plans( $property_id, $check_in );
+			if ( ! in_array( $payment_plan, $eligible_plans, true ) ) {
+				return new \WP_Error(
+					'plan_not_eligible',
+					'The selected payment plan is not available for this property or check-in date.',
+					array( 'status' => 400 )
+				);
+			}
 		}
 
 		$charge_amount = $total;
@@ -570,6 +586,7 @@ class PublicAPI extends \WP_REST_Controller {
 
 		// Persist payment plan meta
 		update_post_meta( $booking_id, 'str_payment_plan', $payment_plan );
+		$guest_access_token = $this->generate_guest_access_token( $booking_id );
 
 		// Update PaymentIntent metadata with booking_id
 		$this->payment_handler->update_payment_intent_metadata( $intent['id'], array( 'booking_id' => $booking_id ) );
@@ -582,11 +599,12 @@ class PublicAPI extends \WP_REST_Controller {
 		}
 
 		$response_data = array(
-			'booking_id'    => $booking_id,
-			'client_secret' => $intent['client_secret'],
-			'total'         => $total,
-			'payment_plan'  => $payment_plan,
-			'charge_amount' => $charge_amount,
+			'booking_id'         => $booking_id,
+			'client_secret'      => $intent['client_secret'],
+			'total'              => $total,
+			'payment_plan'       => $payment_plan,
+			'charge_amount'      => $charge_amount,
+			'guest_access_token' => $guest_access_token,
 		);
 
 		if ( ! empty( $installment_schedule ) ) {
@@ -1275,7 +1293,25 @@ class PublicAPI extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Guest email token verification for GET /booking/{id}.
+	 * Generate a random, high-entropy access token for a booking and store it
+	 * as post meta. Reused if one already exists (e.g. finalize retried).
+	 *
+	 * @param int $booking_id Booking post ID.
+	 * @return string The access token.
+	 */
+	private function generate_guest_access_token( int $booking_id ): string {
+		$existing = get_post_meta( $booking_id, 'str_guest_access_token', true );
+		if ( $existing ) {
+			return $existing;
+		}
+
+		$token = bin2hex( random_bytes( 16 ) );
+		update_post_meta( $booking_id, 'str_guest_access_token', $token );
+		return $token;
+	}
+
+	/**
+	 * Guest access-token verification for GET /booking/{id}.
 	 *
 	 * @param \WP_REST_Request $request
 	 * @return bool|\WP_Error
@@ -1288,9 +1324,9 @@ class PublicAPI extends \WP_REST_Controller {
 			return new \WP_Error( 'unauthorized', 'Guest token required.', array( 'status' => 401 ) );
 		}
 
-		$stored_email = get_post_meta( $id, 'str_guest_email', true );
+		$stored_token = get_post_meta( $id, 'str_guest_access_token', true );
 
-		if ( empty( $stored_email ) || ! hash_equals( strtolower( $stored_email ), strtolower( $token ) ) ) {
+		if ( empty( $stored_token ) || ! hash_equals( $stored_token, $token ) ) {
 			return new \WP_Error( 'forbidden', 'Invalid guest token.', array( 'status' => 403 ) );
 		}
 

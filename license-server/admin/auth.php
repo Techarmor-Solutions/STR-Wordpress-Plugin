@@ -17,8 +17,10 @@ if ( $_SERVER['REQUEST_METHOD'] === 'POST' ) {
 
 	if ( Auth::login( $username, $password ) ) {
 		$next = isset( $_GET['next'] ) ? filter_var( $_GET['next'], FILTER_SANITIZE_URL ) : 'index.php';
-		// Only allow relative redirects.
-		if ( str_starts_with( $next, '/' ) || str_starts_with( $next, 'http' ) ) {
+		// Only allow bare relative paths — reject anything with a scheme or host,
+		// regardless of case or leading slashes/backslashes.
+		$next = ltrim( $next, "/\\" );
+		if ( parse_url( $next, PHP_URL_SCHEME ) || parse_url( $next, PHP_URL_HOST ) ) {
 			$next = 'index.php';
 		}
 		Response::redirect( $next ?: 'index.php' );
