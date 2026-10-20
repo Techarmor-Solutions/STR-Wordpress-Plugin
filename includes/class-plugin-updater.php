@@ -177,7 +177,17 @@ class PluginUpdater {
 	 * @return array Modified arguments.
 	 */
 	public function maybe_add_github_auth( array $args, string $url ): array {
-		if ( ! str_contains( $url, 'github.com' ) && ! str_contains( $url, 'githubusercontent.com' ) ) {
+		// Match the parsed host exactly so the token is never sent to look-alike
+		// domains (e.g. evilgithub.com) or URLs that merely mention github.com.
+		$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
+		$host   = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+
+		$is_github = 'github.com' === $host
+			|| 'api.github.com' === $host
+			|| 'codeload.github.com' === $host
+			|| str_ends_with( $host, '.githubusercontent.com' );
+
+		if ( 'https' !== $scheme || ! $is_github ) {
 			return $args;
 		}
 

@@ -23,6 +23,8 @@ rsync -a --quiet \
   --exclude="package.json" \
   --exclude="package-lock.json" \
   --exclude="bin" \
+  --exclude="license-server" \
+  --exclude=".gitattributes" \
   --exclude=".DS_Store" \
   "$PLUGIN_DIR/" "$STAGING/"
 

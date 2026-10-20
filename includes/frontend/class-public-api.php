@@ -369,7 +369,7 @@ class PublicAPI extends \WP_REST_Controller {
 		} catch ( \Throwable $e ) {
 			\Sentry\captureException( $e );
 			error_log( 'STR Booking [check_availability] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString() );
-			return new \WP_Error( 'availability_exception', $e->getMessage(), array( 'status' => 500 ) );
+			return new \WP_Error( 'availability_exception', 'Unable to check availability right now. Please try again.', array( 'status' => 500 ) );
 		}
 	}
 
@@ -396,7 +396,7 @@ class PublicAPI extends \WP_REST_Controller {
 		} catch ( \Throwable $e ) {
 			\Sentry\captureException( $e );
 			error_log( 'STR Booking [get_pricing] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString() );
-			return new \WP_Error( 'pricing_exception', $e->getMessage(), array( 'status' => 500 ) );
+			return new \WP_Error( 'pricing_exception', 'Unable to calculate pricing right now. Please try again.', array( 'status' => 500 ) );
 		}
 	}
 
@@ -412,7 +412,7 @@ class PublicAPI extends \WP_REST_Controller {
 		} catch ( \Throwable $e ) {
 			\Sentry\captureException( $e );
 			error_log( 'STR Booking [create_booking] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString() );
-			return new \WP_Error( 'booking_exception', $e->getMessage(), array( 'status' => 500 ) );
+			return new \WP_Error( 'booking_exception', 'Unable to create your booking right now. Please try again.', array( 'status' => 500 ) );
 		}
 	}
 
@@ -551,7 +551,8 @@ class PublicAPI extends \WP_REST_Controller {
 			$customer    = $this->payment_handler->create_stripe_customer( $guest_email, $guest_name );
 
 			if ( is_wp_error( $customer ) ) {
-				return new \WP_Error( $customer->get_error_code(), $customer->get_error_message(), array( 'status' => 500 ) );
+				error_log( 'STR Booking [create_booking] Stripe customer: ' . $customer->get_error_message() );
+				return new \WP_Error( $customer->get_error_code(), 'Unable to set up payment right now. Please try again.', array( 'status' => 500 ) );
 			}
 
 			$customer_id = $customer;
@@ -562,7 +563,8 @@ class PublicAPI extends \WP_REST_Controller {
 		$intent         = $this->payment_handler->create_payment_intent( $charge_amount, $transfer_group, $property_id, $customer_id );
 
 		if ( is_wp_error( $intent ) ) {
-			return new \WP_Error( $intent->get_error_code(), $intent->get_error_message(), array( 'status' => 500 ) );
+			error_log( 'STR Booking [create_booking] PaymentIntent: ' . $intent->get_error_message() );
+			return new \WP_Error( $intent->get_error_code(), 'Unable to set up payment right now. Please try again.', array( 'status' => 500 ) );
 		}
 
 		// Create booking record
@@ -683,7 +685,8 @@ class PublicAPI extends \WP_REST_Controller {
 			$intent = \Stripe\PaymentIntent::retrieve( $pi_id );
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
 			\Sentry\captureException( $e );
-			return new \WP_Error( 'stripe_error', $e->getMessage(), array( 'status' => 400 ) );
+			error_log( 'STR Booking [finalize_booking] ' . $e->getMessage() );
+			return new \WP_Error( 'stripe_error', 'Unable to verify payment.', array( 'status' => 400 ) );
 		}
 
 		// Make sure this PaymentIntent belongs to this booking
