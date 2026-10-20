@@ -37,10 +37,7 @@ function check_rate_limit(): bool {
 	}
 
 	if ( (int) $row['count'] >= RATE_LIMIT_MAX ) {
-		http_response_code( 429 );
-		header( 'Content-Type: application/json' );
-		echo json_encode( [ 'valid' => false, 'status' => 'rate_limited', 'message' => 'Too many requests.' ] );
-		exit;
+		Response::json( [ 'valid' => false, 'status' => 'rate_limited', 'message' => 'Too many requests.' ], 429 );
 	}
 
 	$db->prepare( 'UPDATE rate_limits SET count = count + 1 WHERE ip_hash = ?' )
@@ -61,6 +58,14 @@ function parse_json_body(): array {
 	if ( ! is_array( $data ) ) {
 		Response::error( 'Invalid JSON.' );
 	}
+
+	// Bind the caller's nonce, site and endpoint into every signed response.
+	Response::set_context(
+		is_string( $data['nonce'] ?? null ) ? $data['nonce'] : '',
+		is_string( $data['site_url'] ?? null ) ? trim( $data['site_url'] ) : '',
+		basename( $_SERVER['SCRIPT_FILENAME'] ?? '', '.php' )
+	);
+
 	return $data;
 }
 
